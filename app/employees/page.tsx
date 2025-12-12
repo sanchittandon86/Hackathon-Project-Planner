@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Pencil, Trash2, Plus, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Plus, Loader2, Search, X, Users, UserCheck, Code, Bug } from "lucide-react";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -48,6 +49,11 @@ export default function EmployeesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [deleteEmployeeId, setDeleteEmployeeId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [designationFilter, setDesignationFilter] = useState<"all" | "Developer" | "QA">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   // Form state
   const [formData, setFormData] = useState<EmployeeInsert>({
@@ -67,13 +73,13 @@ export default function EmployeesPage() {
 
       if (error) {
         console.error("Error fetching employees:", error);
-        alert("Failed to fetch employees. Please try again.");
+        toast.error("Failed to fetch employees. Please try again.");
       } else {
         setEmployees(data || []);
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -82,28 +88,29 @@ export default function EmployeesPage() {
   // Add new employee
   const handleAddEmployee = async () => {
     if (!formData.name.trim()) {
-      alert("Please enter employee name");
+      toast.error("Please enter employee name");
       return;
     }
 
     try {
       setSubmitting(true);
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("employees")
-        .insert([formData])
+        .insert([{ ...formData, last_updated: new Date().toISOString() }])
         .select();
 
       if (error) {
         console.error("Error adding employee:", error);
-        alert("Failed to add employee. Please try again.");
+        toast.error("Failed to add employee. Please try again.");
       } else {
         await fetchEmployees();
         setIsDialogOpen(false);
         resetForm();
+        toast.success("Employee added successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -112,7 +119,7 @@ export default function EmployeesPage() {
   // Update existing employee
   const handleUpdateEmployee = async () => {
     if (!selectedEmployee || !formData.name.trim()) {
-      alert("Please enter employee name");
+      toast.error("Please enter employee name");
       return;
     }
 
@@ -120,20 +127,21 @@ export default function EmployeesPage() {
       setSubmitting(true);
       const { error } = await supabase
         .from("employees")
-        .update(formData)
+        .update({ ...formData, last_updated: new Date().toISOString() })
         .eq("id", selectedEmployee.id);
 
       if (error) {
         console.error("Error updating employee:", error);
-        alert("Failed to update employee. Please try again.");
+        toast.error("Failed to update employee. Please try again.");
       } else {
         await fetchEmployees();
         setIsDialogOpen(false);
         resetForm();
+        toast.success("Employee updated successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -145,6 +153,32 @@ export default function EmployeesPage() {
 
     try {
       setSubmitting(true);
+      
+      // First, delete all plans associated with this employee
+      const { error: plansError } = await supabase
+        .from("plans")
+        .delete()
+        .eq("employee_id", deleteEmployeeId);
+
+      if (plansError) {
+        console.error("Error deleting associated plans:", plansError);
+        toast.error("Failed to delete associated plans. Please try again.");
+        return;
+      }
+
+      // Also delete all leaves associated with this employee
+      const { error: leavesError } = await supabase
+        .from("leaves")
+        .delete()
+        .eq("employee_id", deleteEmployeeId);
+
+      if (leavesError) {
+        console.error("Error deleting associated leaves:", leavesError);
+        toast.error("Failed to delete associated leaves. Please try again.");
+        return;
+      }
+
+      // Now delete the employee
       const { error } = await supabase
         .from("employees")
         .delete()
@@ -152,15 +186,16 @@ export default function EmployeesPage() {
 
       if (error) {
         console.error("Error deleting employee:", error);
-        alert("Failed to delete employee. Please try again.");
+        toast.error("Failed to delete employee. Please try again.");
       } else {
         await fetchEmployees();
         setIsDeleteDialogOpen(false);
         setDeleteEmployeeId(null);
+        toast.success("Employee deleted successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -208,12 +243,95 @@ export default function EmployeesPage() {
     }
   };
 
+  // Filter employees based on search and filters
+  const filteredEmployees = employees.filter((employee) => {
+    const matchesSearch = employee.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesDesignation = designationFilter === "all" || employee.designation === designationFilter;
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && employee.active) ||
+      (statusFilter === "inactive" && !employee.active);
+
+    return matchesSearch && matchesDesignation && matchesStatus;
+  });
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery("");
+    setDesignationFilter("all");
+    setStatusFilter("all");
+  };
+
+  const hasActiveFilters = searchQuery !== "" || designationFilter !== "all" || statusFilter !== "all";
+
+  // Calculate statistics
+  const totalEmployees = employees.length;
+  const activeEmployees = employees.filter((emp) => emp.active).length;
+  const developerCount = employees.filter((emp) => emp.designation === "Developer").length;
+  const qaCount = employees.filter((emp) => emp.designation === "QA").length;
+
   useEffect(() => {
     fetchEmployees();
   }, []);
 
   return (
-    <div className="container mx-auto py-10 px-4">
+    <div className="container mx-auto py-10 px-4 space-y-6">
+      {/* Statistics Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalEmployees}</div>
+            <p className="text-xs text-muted-foreground">
+              All registered employees
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Employees</CardTitle>
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeEmployees}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalEmployees > 0 ? `${Math.round((activeEmployees / totalEmployees) * 100)}%` : '0%'} of total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Developers</CardTitle>
+            <Code className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{developerCount}</div>
+            <p className="text-xs text-muted-foreground">
+              Development team size
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">QA Engineers</CardTitle>
+            <Bug className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{qaCount}</div>
+            <p className="text-xs text-muted-foreground">
+              Quality assurance team
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Employee Table Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -314,6 +432,65 @@ export default function EmployeesPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Search and Filter Section */}
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search employees by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* Designation Filter */}
+              <Select
+                value={designationFilter}
+                onValueChange={(value: "all" | "Developer" | "QA") => setDesignationFilter(value)}
+              >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Designation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Designations</SelectItem>
+                  <SelectItem value="Developer">Developer</SelectItem>
+                  <SelectItem value="QA">QA</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Status Filter */}
+              <Select
+                value={statusFilter}
+                onValueChange={(value: "all" | "active" | "inactive") => setStatusFilter(value)}
+              >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Clear Filters Button */}
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+                  <X className="mr-2 h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Results Count */}
+            <div className="text-sm text-muted-foreground">
+              Showing {filteredEmployees.length} of {employees.length} employees
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -326,30 +503,60 @@ export default function EmployeesPage() {
                 Click the "Add Employee" button to create your first employee record
               </p>
             </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg">No employees match your filters</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Try adjusting your search or filters
+              </p>
+              <Button variant="outline" onClick={clearFilters} className="mt-4">
+                <X className="mr-2 h-4 w-4" />
+                Clear Filters
+              </Button>
+            </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px]">ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Designation</TableHead>
-                    <TableHead className="w-[100px]">Status</TableHead>
-                    <TableHead className="w-[150px] text-right">Actions</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="w-[80px] font-semibold">ID</TableHead>
+                    <TableHead className="font-semibold">Name</TableHead>
+                    <TableHead className="font-semibold">Designation</TableHead>
+                    <TableHead className="w-[120px] font-semibold">Status</TableHead>
+                    <TableHead className="w-[150px] text-right font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.map((employee) => (
-                    <TableRow key={employee.id}>
-                      <TableCell className="font-medium">{employee.id}</TableCell>
-                      <TableCell className="font-medium">{employee.name}</TableCell>
-                      <TableCell>{employee.designation}</TableCell>
+                  {filteredEmployees.map((employee, index) => (
+                    <TableRow
+                      key={employee.id}
+                      className={`
+                        transition-colors duration-150 hover:bg-muted/50
+                        ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}
+                      `}
+                    >
+                      <TableCell className="font-medium text-muted-foreground">
+                        #{employee.id}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        {employee.name}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {employee.designation === "Developer" ? (
+                            <Code className="h-4 w-4 text-blue-600" />
+                          ) : (
+                            <Bug className="h-4 w-4 text-purple-600" />
+                          )}
+                          <span className="text-sm font-medium">{employee.designation}</span>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
                             employee.active
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                              : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
                           }`}
                         >
                           {employee.active ? "Active" : "Inactive"}
@@ -361,15 +568,19 @@ export default function EmployeesPage() {
                             variant="outline"
                             size="icon"
                             onClick={() => openEditDialog(employee)}
+                            className="h-8 w-8 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all"
+                            title="Edit employee"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
-                            variant="destructive"
+                            variant="outline"
                             size="icon"
                             onClick={() => openDeleteDialog(employee.id)}
+                            className="h-8 w-8 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
+                            title="Delete employee"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>

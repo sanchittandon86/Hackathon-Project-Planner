@@ -6,6 +6,7 @@ import { Task, TaskInsert } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Pencil, Trash2, Plus, Loader2, Clock } from "lucide-react";
+import { Pencil, Trash2, Plus, Loader2, Clock, Search, X, ListTodo, Code, Bug, TrendingUp } from "lucide-react";
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -48,12 +49,17 @@ export default function TasksPage() {
   const [deleteTaskId, setDeleteTaskId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [designationFilter, setDesignationFilter] = useState<"all" | "Developer" | "QA">("all");
+
   // Form state
-  const [formData, setFormData] = useState<TaskInsert>({
+  const [formData, setFormData] = useState<TaskInsert & { due_date?: string | null }>({
     client: "",
     title: "",
     effort_hours: 0,
     designation_required: "Developer",
+    due_date: null,
   });
 
   // Fetch all tasks
@@ -67,13 +73,13 @@ export default function TasksPage() {
 
       if (error) {
         console.error("Error fetching tasks:", error);
-        alert("Failed to fetch tasks. Please try again.");
+        toast.error("Failed to fetch tasks. Please try again.");
       } else {
         setTasks(data || []);
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -82,36 +88,48 @@ export default function TasksPage() {
   // Add new task
   const handleAddTask = async () => {
     if (!formData.client.trim()) {
-      alert("Please enter client name");
+      toast.error("Please enter client name");
       return;
     }
     if (!formData.title.trim()) {
-      alert("Please enter task title");
+      toast.error("Please enter task title");
       return;
     }
     if (formData.effort_hours <= 0) {
-      alert("Please enter valid effort hours (greater than 0)");
+      toast.error("Please enter valid effort hours (greater than 0)");
       return;
+    }
+    // Validate due_date if provided
+    if (formData.due_date) {
+      const dueDate = new Date(formData.due_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      if (dueDate < today) {
+        toast.error("Due date must be today or in the future");
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("tasks")
-        .insert([formData])
+        .insert([{ ...formData, last_updated: new Date().toISOString() }])
         .select();
 
       if (error) {
         console.error("Error adding task:", error);
-        alert("Failed to add task. Please try again.");
+        toast.error("Failed to add task. Please try again.");
       } else {
         await fetchTasks();
         setIsDialogOpen(false);
         resetForm();
+        toast.success("Task added successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -122,36 +140,48 @@ export default function TasksPage() {
     if (!selectedTask) return;
 
     if (!formData.client.trim()) {
-      alert("Please enter client name");
+      toast.error("Please enter client name");
       return;
     }
     if (!formData.title.trim()) {
-      alert("Please enter task title");
+      toast.error("Please enter task title");
       return;
     }
     if (formData.effort_hours <= 0) {
-      alert("Please enter valid effort hours (greater than 0)");
+      toast.error("Please enter valid effort hours (greater than 0)");
       return;
+    }
+    // Validate due_date if provided
+    if (formData.due_date) {
+      const dueDate = new Date(formData.due_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      if (dueDate < today) {
+        toast.error("Due date must be today or in the future");
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
       const { error } = await supabase
         .from("tasks")
-        .update(formData)
+        .update({ ...formData, last_updated: new Date().toISOString() })
         .eq("id", selectedTask.id);
 
       if (error) {
         console.error("Error updating task:", error);
-        alert("Failed to update task. Please try again.");
+        toast.error("Failed to update task. Please try again.");
       } else {
         await fetchTasks();
         setIsDialogOpen(false);
         resetForm();
+        toast.success("Task updated successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -170,15 +200,16 @@ export default function TasksPage() {
 
       if (error) {
         console.error("Error deleting task:", error);
-        alert("Failed to delete task. Please try again.");
+        toast.error("Failed to delete task. Please try again.");
       } else {
         await fetchTasks();
         setIsDeleteDialogOpen(false);
         setDeleteTaskId(null);
+        toast.success("Task deleted successfully!");
       }
     } catch (error) {
       console.error("Unexpected error:", error);
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setSubmitting(false);
     }
@@ -199,6 +230,7 @@ export default function TasksPage() {
       title: task.title,
       effort_hours: task.effort_hours,
       designation_required: task.designation_required,
+      due_date: (task as any).due_date || null,
     });
     setIsDialogOpen(true);
   };
@@ -216,6 +248,7 @@ export default function TasksPage() {
       title: "",
       effort_hours: 0,
       designation_required: "Developer",
+      due_date: null,
     });
     setSelectedTask(null);
   };
@@ -228,12 +261,92 @@ export default function TasksPage() {
     }
   };
 
+  // Filter tasks based on search and filters
+  const filteredTasks = tasks.filter((task) => {
+    const matchesSearch =
+      task.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesDesignation = designationFilter === "all" || task.designation_required === designationFilter;
+
+    return matchesSearch && matchesDesignation;
+  });
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery("");
+    setDesignationFilter("all");
+  };
+
+  const hasActiveFilters = searchQuery !== "" || designationFilter !== "all";
+
+  // Calculate statistics
+  const totalTasks = tasks.length;
+  const totalEffortHours = tasks.reduce((sum, task) => sum + task.effort_hours, 0);
+  const developerTasks = tasks.filter((task) => task.designation_required === "Developer").length;
+  const qaTasks = tasks.filter((task) => task.designation_required === "QA").length;
+
   useEffect(() => {
     fetchTasks();
   }, []);
 
   return (
-    <div className="container mx-auto py-10 px-4">
+    <div className="container mx-auto py-10 px-4 space-y-6">
+      {/* Statistics Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+            <ListTodo className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalTasks}</div>
+            <p className="text-xs text-muted-foreground">
+              All project tasks
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Effort</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalEffortHours}</div>
+            <p className="text-xs text-muted-foreground">
+              Hours estimated
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Developer Tasks</CardTitle>
+            <Code className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{developerTasks}</div>
+            <p className="text-xs text-muted-foreground">
+              Development work
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">QA Tasks</CardTitle>
+            <Bug className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{qaTasks}</div>
+            <p className="text-xs text-muted-foreground">
+              Testing work
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Tasks Table Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -322,6 +435,22 @@ export default function TasksPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="due_date">Due Date (Optional)</Label>
+                    <Input
+                      id="due_date"
+                      type="date"
+                      value={formData.due_date || ""}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={(e) =>
+                        setFormData({ ...formData, due_date: e.target.value || null })
+                      }
+                      disabled={submitting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Task must be completed by this date
+                    </p>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
@@ -346,6 +475,50 @@ export default function TasksPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Search and Filter Section */}
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by client or task title..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* Designation Filter */}
+              <Select
+                value={designationFilter}
+                onValueChange={(value: "all" | "Developer" | "QA") => setDesignationFilter(value)}
+              >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Designation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Designations</SelectItem>
+                  <SelectItem value="Developer">Developer</SelectItem>
+                  <SelectItem value="QA">QA</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Clear Filters Button */}
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+                  <X className="mr-2 h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Results Count */}
+            <div className="text-sm text-muted-foreground">
+              Showing {filteredTasks.length} of {tasks.length} tasks
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -358,43 +531,73 @@ export default function TasksPage() {
                 Click the "Add Task" button to create your first task
               </p>
             </div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg">No tasks match your filters</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Try adjusting your search or filters
+              </p>
+              <Button variant="outline" onClick={clearFilters} className="mt-4">
+                <X className="mr-2 h-4 w-4" />
+                Clear Filters
+              </Button>
+            </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[60px]">ID</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead className="w-[130px]">Effort</TableHead>
-                    <TableHead className="w-[150px]">Designation</TableHead>
-                    <TableHead className="w-[150px] text-right">Actions</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="w-[80px] font-semibold">ID</TableHead>
+                    <TableHead className="font-semibold">Client</TableHead>
+                    <TableHead className="font-semibold">Title</TableHead>
+                    <TableHead className="w-[140px] font-semibold">Effort</TableHead>
+                    <TableHead className="w-[160px] font-semibold">Designation</TableHead>
+                    <TableHead className="w-[150px] text-right font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tasks.map((task) => (
-                    <TableRow key={task.id}>
-                      <TableCell className="font-medium">{task.id}</TableCell>
-                      <TableCell className="font-medium">{task.client}</TableCell>
-                      <TableCell>{task.title}</TableCell>
+                  {filteredTasks.map((task, index) => (
+                    <TableRow
+                      key={task.id}
+                      className={`
+                        transition-colors duration-150 hover:bg-muted/50
+                        ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}
+                      `}
+                    >
+                      <TableCell className="font-medium text-muted-foreground">
+                        #{task.id}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        {task.client}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {task.title}
+                      </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-orange-600" />
+                          <span className="font-semibold text-sm">
                             {task.effort_hours} {task.effort_hours === 1 ? 'hr' : 'hrs'}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            task.designation_required === "Developer"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-purple-100 text-purple-800"
-                          }`}
-                        >
-                          {task.designation_required}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {task.designation_required === "Developer" ? (
+                            <Code className="h-4 w-4 text-blue-600" />
+                          ) : (
+                            <Bug className="h-4 w-4 text-purple-600" />
+                          )}
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
+                              task.designation_required === "Developer"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                                : "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
+                            }`}
+                          >
+                            {task.designation_required}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -402,15 +605,19 @@ export default function TasksPage() {
                             variant="outline"
                             size="icon"
                             onClick={() => openEditDialog(task)}
+                            className="h-8 w-8 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all"
+                            title="Edit task"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
-                            variant="destructive"
+                            variant="outline"
                             size="icon"
                             onClick={() => openDeleteDialog(task.id)}
+                            className="h-8 w-8 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
+                            title="Delete task"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>

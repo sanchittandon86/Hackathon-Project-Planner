@@ -20,6 +20,7 @@ export interface Task {
   title: string;
   effort_hours: number;
   designation_required: 'Developer' | 'QA';
+  due_date?: string | null;
   created_at?: string;
 }
 
