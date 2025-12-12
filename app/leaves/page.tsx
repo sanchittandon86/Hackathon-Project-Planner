@@ -293,33 +293,33 @@ export default function LeavesPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Leave</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete the leave for{" "}
-              <strong>{leaveToDelete?.employee_name}</strong> on{" "}
-              <strong>
-                {leaveToDelete
-                  ? formatDate(leaveToDelete.leave_date)
-                  : ""}
-              </strong>
-              ? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Delete Leave</DialogTitle>
+      <DialogDescription>
+        Are you sure you want to delete the leave for{" "}
+        <strong>{leaveToDelete?.employee_name || "this employee"}</strong> on{" "}
+        <strong>
+          {leaveToDelete
+            ? formatDate(leaveToDelete.leave_date)
+            : ""}
+        </strong>
+        ? This action cannot be undone.
+      </DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onClick={() => setDeleteDialogOpen(false)}
+      >
+        Cancel
+      </Button>
+      <Button variant="destructive" onClick={handleDeleteConfirm}>
+        Delete
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </div>
   );
 }
