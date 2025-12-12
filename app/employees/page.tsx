@@ -96,7 +96,7 @@ export default function EmployeesPage() {
       setSubmitting(true);
       const { error } = await supabase
         .from("employees")
-        .insert([formData])
+        .insert([{ ...formData, last_updated: new Date().toISOString() }])
         .select();
 
       if (error) {
@@ -127,7 +127,7 @@ export default function EmployeesPage() {
       setSubmitting(true);
       const { error } = await supabase
         .from("employees")
-        .update(formData)
+        .update({ ...formData, last_updated: new Date().toISOString() })
         .eq("id", selectedEmployee.id);
 
       if (error) {

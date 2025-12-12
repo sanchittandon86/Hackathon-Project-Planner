@@ -137,6 +137,7 @@ export default function LeavesPage() {
       const { error } = await supabase.from("leaves").insert({
         employee_id: selectedEmployee,
         leave_date: leaveDate,
+        last_updated: new Date().toISOString(),
       });
 
       if (error) {

@@ -17,8 +17,10 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle } from "lucide-react";
 
 type Plan = {
   id: string;
@@ -27,9 +29,12 @@ type Plan = {
   start_date: string;
   end_date: string;
   total_hours: number;
+  is_overdue?: boolean;
+  days_overdue?: number;
   task?: {
     title: string;
     client: string;
+    due_date?: string | null;
   };
   employee?: {
     name: string;
@@ -40,6 +45,7 @@ type PlanWithDetails = Plan & {
   task_title: string;
   task_client: string;
   employee_name: string;
+  task_due_date?: string | null;
 };
 
 type ClientGroup = {
@@ -59,6 +65,9 @@ export default function PlannerPage() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("date");
+  const [needsRecalculation, setNeedsRecalculation] = useState(false);
+  const [checkingRecalculation, setCheckingRecalculation] = useState(false);
+  const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
 
   const fetchPlans = async () => {
     setLoading(true);
@@ -69,7 +78,7 @@ export default function PlannerPage() {
         .select(
           `
           *,
-          task:tasks(title, client),
+          task:tasks(title, client, due_date),
           employee:employees(name)
         `
         )
@@ -87,12 +96,16 @@ export default function PlannerPage() {
         return;
       }
 
-      // Transform data to include task_title, task_client, and employee_name
+      // Transform data to include task_title, task_client, employee_name, and due_date
       const plansWithDetails: PlanWithDetails[] = plansData.map((plan: any) => ({
         ...plan,
         task_title: plan.task?.title || "Unknown Task",
         task_client: plan.task?.client || "Unknown Client",
         employee_name: plan.employee?.name || "Unknown Employee",
+        task_due_date: plan.task?.due_date || null,
+        // Ensure is_overdue and days_overdue are properly set
+        is_overdue: plan.is_overdue || false,
+        days_overdue: plan.days_overdue || 0,
       }));
 
       setPlans(plansWithDetails);
@@ -103,8 +116,79 @@ export default function PlannerPage() {
     }
   };
 
+  const checkRecalculationNeeded = async () => {
+    setCheckingRecalculation(true);
+    try {
+      // Get max last_updated from master data tables
+      const [employeesResult, tasksResult, leavesResult, plansResult] =
+        await Promise.all([
+          supabase
+            .from("employees")
+            .select("last_updated")
+            .order("last_updated", { ascending: false })
+            .limit(1),
+          supabase
+            .from("tasks")
+            .select("last_updated")
+            .order("last_updated", { ascending: false })
+            .limit(1),
+          supabase
+            .from("leaves")
+            .select("last_updated")
+            .order("last_updated", { ascending: false })
+            .limit(1),
+          supabase
+            .from("plans")
+            .select("last_updated")
+            .order("last_updated", { ascending: false })
+            .limit(1),
+        ]);
+
+      const employeesMax =
+        employeesResult.data?.[0]?.last_updated || null;
+      const tasksMax = tasksResult.data?.[0]?.last_updated || null;
+      const leavesMax = leavesResult.data?.[0]?.last_updated || null;
+      const plansMax = plansResult.data?.[0]?.last_updated || null;
+
+      // Find the latest master data update
+      const masterDates = [
+        employeesMax,
+        tasksMax,
+        leavesMax,
+      ].filter(Boolean) as string[];
+
+      if (masterDates.length === 0) {
+        // No master data yet, no need to recalculate
+        setNeedsRecalculation(false);
+        return;
+      }
+
+      const latestMasterUpdate = new Date(
+        Math.max(...masterDates.map((d) => new Date(d).getTime()))
+      );
+
+      // Compare with plans update
+      if (!plansMax) {
+        // Plans don't exist, but master data does - needs recalculation
+        setNeedsRecalculation(true);
+        return;
+      }
+
+      const plansUpdate = new Date(plansMax);
+
+      // If master data is newer than plans, show alert
+      setNeedsRecalculation(latestMasterUpdate > plansUpdate);
+    } catch (error) {
+      console.error("Error checking recalculation:", error);
+      setNeedsRecalculation(false);
+    } finally {
+      setCheckingRecalculation(false);
+    }
+  };
+
   useEffect(() => {
     fetchPlans();
+    checkRecalculationNeeded();
   }, []);
 
   const handleGeneratePlan = async () => {
@@ -119,6 +203,8 @@ export default function PlannerPage() {
       if (data.success) {
         // Refresh plans after generation
         await fetchPlans();
+        // Recheck if recalculation is needed (should be false now)
+        await checkRecalculationNeeded();
       } else {
         console.error("Failed to generate plan:", data.error);
         alert("Failed to generate plan. Please check the console.");
@@ -139,10 +225,55 @@ export default function PlannerPage() {
     });
   };
 
-  // Group plans by client
+  // Helper function to get status badge for a plan
+  const getStatusBadge = (plan: PlanWithDetails) => {
+    if (!plan.task_due_date) {
+      return null; // No due date, no badge
+    }
+
+    const dueDate = new Date(plan.task_due_date);
+    const endDate = new Date(plan.end_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    dueDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (plan.is_overdue && (plan.days_overdue ?? 0) > 0) {
+      const daysOverdue = plan.days_overdue ?? 0;
+      return (
+        <Badge variant="destructive">
+          Overdue by {daysOverdue} day{daysOverdue !== 1 ? "s" : ""}
+        </Badge>
+      );
+    } else if (daysUntilDue >= 0 && daysUntilDue <= 2) {
+      return (
+        <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">
+          Due soon ({daysUntilDue === 0 ? "Today" : `${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`})
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="default" className="bg-green-500 hover:bg-green-600">
+          On Time
+        </Badge>
+      );
+    }
+  };
+
+  // Filter plans based on overdue filter
+  const filteredPlans = useMemo(() => {
+    if (!showOnlyOverdue) return plans;
+    return plans.filter((plan) => plan.is_overdue === true);
+  }, [plans, showOnlyOverdue]);
+
+  // Group plans by client (using filtered plans)
   const clientGroups = useMemo(() => {
     const groups: Record<string, PlanWithDetails[]> = {};
-    plans.forEach((plan) => {
+    filteredPlans.forEach((plan) => {
       const client = plan.task_client;
       if (!groups[client]) {
         groups[client] = [];
@@ -153,21 +284,21 @@ export default function PlannerPage() {
     return Object.entries(groups)
       .map(([client, plans]) => ({ client, plans }))
       .sort((a, b) => a.client.localeCompare(b.client));
-  }, [plans]);
+  }, [filteredPlans]);
 
-  // Group plans by sprint (14-day buckets)
+  // Group plans by sprint (14-day buckets) (using filtered plans)
   const sprintGroups = useMemo(() => {
-    if (plans.length === 0) return [];
+    if (filteredPlans.length === 0) return [];
 
     // Find the earliest start date
     const earliestDate = new Date(
-      Math.min(...plans.map((p) => new Date(p.start_date).getTime()))
+      Math.min(...filteredPlans.map((p) => new Date(p.start_date).getTime()))
     );
 
     // Group by sprint (14-day periods)
     const groups: Record<number, PlanWithDetails[]> = {};
 
-    plans.forEach((plan) => {
+    filteredPlans.forEach((plan) => {
       const planStartDate = new Date(plan.start_date);
       const daysDiff = Math.floor(
         (planStartDate.getTime() - earliestDate.getTime()) /
@@ -203,14 +334,18 @@ export default function PlannerPage() {
         };
       })
       .sort((a, b) => a.sprintNumber - b.sprintNumber);
-  }, [plans]);
+  }, [filteredPlans]);
 
   // Date-wise view (sorted by start_date)
   const DateWiseView = () => {
-    if (plans.length === 0) {
+    const sortedPlans = [...filteredPlans].sort(
+      (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    );
+
+    if (sortedPlans.length === 0) {
       return (
         <div className="text-center py-8 text-muted-foreground">
-          No plans available
+          {showOnlyOverdue ? "No overdue tasks" : "No plans available"}
         </div>
       );
     }
@@ -224,11 +359,12 @@ export default function PlannerPage() {
             <TableHead>Client</TableHead>
             <TableHead>Start Date</TableHead>
             <TableHead>End Date</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead>Total Hours</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {plans.map((plan) => (
+          {sortedPlans.map((plan) => (
             <TableRow key={plan.id}>
               <TableCell className="font-medium">
                 {plan.task_title}
@@ -239,6 +375,7 @@ export default function PlannerPage() {
               </TableCell>
               <TableCell>{formatDate(plan.start_date)}</TableCell>
               <TableCell>{formatDate(plan.end_date)}</TableCell>
+              <TableCell>{getStatusBadge(plan)}</TableCell>
               <TableCell>{plan.total_hours}</TableCell>
             </TableRow>
           ))}
@@ -252,7 +389,7 @@ export default function PlannerPage() {
     if (clientGroups.length === 0) {
       return (
         <div className="text-center py-8 text-muted-foreground">
-          No plans available
+          {showOnlyOverdue ? "No overdue tasks" : "No plans available"}
         </div>
       );
     }
@@ -279,6 +416,7 @@ export default function PlannerPage() {
                     <TableHead>Employee</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Total Hours</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -291,6 +429,7 @@ export default function PlannerPage() {
                       <TableCell>{plan.employee_name}</TableCell>
                       <TableCell>{formatDate(plan.start_date)}</TableCell>
                       <TableCell>{formatDate(plan.end_date)}</TableCell>
+                      <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
                     </TableRow>
                   ))}
@@ -308,7 +447,7 @@ export default function PlannerPage() {
     if (sprintGroups.length === 0) {
       return (
         <div className="text-center py-8 text-muted-foreground">
-          No plans available
+          {showOnlyOverdue ? "No overdue tasks" : "No plans available"}
         </div>
       );
     }
@@ -341,6 +480,7 @@ export default function PlannerPage() {
                     <TableHead>Client</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Total Hours</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -356,6 +496,7 @@ export default function PlannerPage() {
                       </TableCell>
                       <TableCell>{formatDate(plan.start_date)}</TableCell>
                       <TableCell>{formatDate(plan.end_date)}</TableCell>
+                      <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
                     </TableRow>
                   ))}
@@ -370,6 +511,23 @@ export default function PlannerPage() {
 
   return (
     <div className="container mx-auto py-8 px-4">
+      {needsRecalculation && (
+        <Alert variant="warning" className="mb-4">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Recalculation Required</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Master data has changed. Please regenerate the plan.</span>
+            <Button
+              onClick={handleGeneratePlan}
+              disabled={generating || loading}
+              size="sm"
+              className="ml-4"
+            >
+              {generating ? "Generating..." : "Recalculate Plan"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -390,12 +548,33 @@ export default function PlannerPage() {
               No plans generated yet. Click "Generate Plan" to create a schedule.
             </div>
           ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="date">Date-wise</TabsTrigger>
-                <TabsTrigger value="client">Client-wise</TabsTrigger>
-                <TabsTrigger value="sprint">Sprint-wise</TabsTrigger>
-              </TabsList>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="showOverdue"
+                    checked={showOnlyOverdue}
+                    onChange={(e) => setShowOnlyOverdue(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <label
+                    htmlFor="showOverdue"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Show only overdue tasks
+                  </label>
+                </div>
+                <Badge variant="outline">
+                  {filteredPlans.length} of {plans.length} tasks
+                </Badge>
+              </div>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="date">Date-wise</TabsTrigger>
+                  <TabsTrigger value="client">Client-wise</TabsTrigger>
+                  <TabsTrigger value="sprint">Sprint-wise</TabsTrigger>
+                </TabsList>
               <TabsContent value="date" className="mt-6">
                 <DateWiseView />
               </TabsContent>
@@ -405,7 +584,8 @@ export default function PlannerPage() {
               <TabsContent value="sprint" className="mt-6">
                 <SprintWiseView />
               </TabsContent>
-            </Tabs>
+              </Tabs>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -12,6 +12,7 @@ import {
   Layers,
   History,
   Menu,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,11 @@ const navigationItems = [
     icon: Layers,
   },
   {
+    name: "Simulator",
+    href: "/planner/simulator",
+    icon: FlaskConical,
+  },
+  {
     name: "Version History",
     href: "/planner/versions",
     icon: History,
@@ -60,7 +66,9 @@ function NavigationContent({ onLinkClick }: { onLinkClick?: () => void }) {
     <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
       {navigationItems.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname === item.href;
+        // For nested routes, check if pathname starts with href (but not exact match for parent)
+        const isActive = pathname === item.href || 
+          (pathname?.startsWith(item.href + "/") && item.href !== "/");
 
         return (
           <Link

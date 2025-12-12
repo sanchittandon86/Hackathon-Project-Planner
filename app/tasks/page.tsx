@@ -54,11 +54,12 @@ export default function TasksPage() {
   const [designationFilter, setDesignationFilter] = useState<"all" | "Developer" | "QA">("all");
 
   // Form state
-  const [formData, setFormData] = useState<TaskInsert>({
+  const [formData, setFormData] = useState<TaskInsert & { due_date?: string | null }>({
     client: "",
     title: "",
     effort_hours: 0,
     designation_required: "Developer",
+    due_date: null,
   });
 
   // Fetch all tasks
@@ -98,12 +99,23 @@ export default function TasksPage() {
       toast.error("Please enter valid effort hours (greater than 0)");
       return;
     }
+    // Validate due_date if provided
+    if (formData.due_date) {
+      const dueDate = new Date(formData.due_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      if (dueDate < today) {
+        toast.error("Due date must be today or in the future");
+        return;
+      }
+    }
 
     try {
       setSubmitting(true);
       const { error } = await supabase
         .from("tasks")
-        .insert([formData])
+        .insert([{ ...formData, last_updated: new Date().toISOString() }])
         .select();
 
       if (error) {
@@ -139,12 +151,23 @@ export default function TasksPage() {
       toast.error("Please enter valid effort hours (greater than 0)");
       return;
     }
+    // Validate due_date if provided
+    if (formData.due_date) {
+      const dueDate = new Date(formData.due_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      if (dueDate < today) {
+        toast.error("Due date must be today or in the future");
+        return;
+      }
+    }
 
     try {
       setSubmitting(true);
       const { error } = await supabase
         .from("tasks")
-        .update(formData)
+        .update({ ...formData, last_updated: new Date().toISOString() })
         .eq("id", selectedTask.id);
 
       if (error) {
@@ -207,6 +230,7 @@ export default function TasksPage() {
       title: task.title,
       effort_hours: task.effort_hours,
       designation_required: task.designation_required,
+      due_date: (task as any).due_date || null,
     });
     setIsDialogOpen(true);
   };
@@ -224,6 +248,7 @@ export default function TasksPage() {
       title: "",
       effort_hours: 0,
       designation_required: "Developer",
+      due_date: null,
     });
     setSelectedTask(null);
   };
@@ -409,6 +434,22 @@ export default function TasksPage() {
                         <SelectItem value="QA">QA</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="due_date">Due Date (Optional)</Label>
+                    <Input
+                      id="due_date"
+                      type="date"
+                      value={formData.due_date || ""}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={(e) =>
+                        setFormData({ ...formData, due_date: e.target.value || null })
+                      }
+                      disabled={submitting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Task must be completed by this date
+                    </p>
                   </div>
                 </div>
                 <DialogFooter>
