@@ -153,6 +153,32 @@ export default function EmployeesPage() {
 
     try {
       setSubmitting(true);
+      
+      // First, delete all plans associated with this employee
+      const { error: plansError } = await supabase
+        .from("plans")
+        .delete()
+        .eq("employee_id", deleteEmployeeId);
+
+      if (plansError) {
+        console.error("Error deleting associated plans:", plansError);
+        toast.error("Failed to delete associated plans. Please try again.");
+        return;
+      }
+
+      // Also delete all leaves associated with this employee
+      const { error: leavesError } = await supabase
+        .from("leaves")
+        .delete()
+        .eq("employee_id", deleteEmployeeId);
+
+      if (leavesError) {
+        console.error("Error deleting associated leaves:", leavesError);
+        toast.error("Failed to delete associated leaves. Please try again.");
+        return;
+      }
+
+      // Now delete the employee
       const { error } = await supabase
         .from("employees")
         .delete()
