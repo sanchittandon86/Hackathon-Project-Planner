@@ -12,9 +12,12 @@ import {
   TrendingUp,
   AlertTriangle,
   Clock,
+  CheckCircle2,
+  PlayCircle,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type DashboardCardProps = {
   icon: React.ReactNode;
@@ -48,6 +51,9 @@ type AnalyticsData = {
   upcomingLeaves: number;
   workloadDistribution: Array<{ name: string; hours: number }>;
   overdueTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  notStartedTasks: number;
 };
 
 const COLORS = ['#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1'];
@@ -60,6 +66,9 @@ export default function Home() {
     upcomingLeaves: 0,
     workloadDistribution: [],
     overdueTasks: 0,
+    completedTasks: 0,
+    inProgressTasks: 0,
+    notStartedTasks: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -131,6 +140,32 @@ export default function Home() {
         .select("*", { count: "exact", head: true })
         .eq("is_overdue", true);
 
+      // 7. Task Completion Stats (from plans)
+      const { data: allPlans } = await supabase
+        .from("plans")
+        .select("is_completed, start_date, end_date");
+
+      const todayForCompletion = new Date();
+      todayForCompletion.setHours(0, 0, 0, 0);
+
+      let completedCount = 0;
+      let inProgressCount = 0;
+      let notStartedCount = 0;
+
+      allPlans?.forEach((plan: any) => {
+        if (plan.is_completed) {
+          completedCount++;
+        } else {
+          const startDate = new Date(plan.start_date);
+          startDate.setHours(0, 0, 0, 0);
+          if (startDate > todayForCompletion) {
+            notStartedCount++;
+          } else {
+            inProgressCount++;
+          }
+        }
+      });
+
       setAnalytics({
         totalEmployees: employeesCount || 0,
         totalTasks: tasksCount || 0,
@@ -138,6 +173,9 @@ export default function Home() {
         upcomingLeaves: leavesCount || 0,
         workloadDistribution,
         overdueTasks: overdueCount || 0,
+        completedTasks: completedCount,
+        inProgressTasks: inProgressCount,
+        notStartedTasks: notStartedCount,
       });
     } catch (error) {
       console.error("Error fetching analytics:", error);
@@ -186,12 +224,59 @@ export default function Home() {
         <h1 className="text-3xl font-bold mb-6">Smart Project Planner</h1>
         <p className="text-muted-foreground text-lg mb-10 max-w-2xl">
           Manage resources, tasks, availability, planning, and track changes.
-        </p>
-      </div>
+          </p>
+        </div>
 
       {/* Analytics Section */}
       {loading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading analytics...</div>
+        <div className="mb-12 space-y-6">
+          {/* Key Metrics Row Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="border-slate-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-4 rounded" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-16 mb-2" />
+                  <Skeleton className="h-3 w-32" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Task Status Row Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="border-slate-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-4 rounded" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-16 mb-2" />
+                  <Skeleton className="h-3 w-24" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Charts Row Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Card key={i} className="border-slate-200">
+                <CardHeader>
+                  <Skeleton className="h-6 w-40 mb-2" />
+                  <Skeleton className="h-4 w-64" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[300px] w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       ) : (
         <div className="mb-12 space-y-6">
           {/* Key Metrics Row */}
@@ -237,6 +322,42 @@ export default function Home() {
               <CardContent>
                 <div className="text-2xl font-bold text-slate-800">{analytics.overdueTasks}</div>
                 <p className="text-xs text-slate-500">Requires attention</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Task Status Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-slate-700">Completed Tasks</CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{analytics.completedTasks}</div>
+                <p className="text-xs text-slate-500">Tasks finished</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-slate-700">In Progress</CardTitle>
+                <PlayCircle className="h-4 w-4 text-yellow-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-600">{analytics.inProgressTasks}</div>
+                <p className="text-xs text-slate-500">Currently active</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-slate-700">Not Started</CardTitle>
+                <Clock className="h-4 w-4 text-slate-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-slate-800">{analytics.notStartedTasks}</div>
+                <p className="text-xs text-slate-500">Scheduled for future</p>
               </CardContent>
             </Card>
           </div>

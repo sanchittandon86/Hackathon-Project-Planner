@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabaseClient";
 import { Trash2 } from "lucide-react";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 type Employee = {
   id: string;
@@ -252,7 +253,7 @@ export default function LeavesPage() {
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Existing Leaves</h3>
             {loading ? (
-              <div className="text-center py-8">Loading leaves...</div>
+              <TableSkeleton rows={5} columns={3} />
             ) : leaves.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No leaves recorded yet. Add a leave using the form above.
