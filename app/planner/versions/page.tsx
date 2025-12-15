@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 type PlanVersion = {
   id: string;
@@ -180,7 +181,7 @@ export default function PlanVersionsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8">Loading version history...</div>
+            <TableSkeleton rows={6} columns={7} />
           ) : versions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No version history available yet. Generate a plan to see changes
@@ -191,7 +192,7 @@ export default function PlanVersionsPage() {
               {Object.entries(groupedVersions).map(([genId, genVersions]) => (
                 <div key={genId} className="space-y-4">
                   {groupByGeneration && genId !== "All" && (
-                    <div className="flex items-center justify-between border-b pb-2">
+                    <div className="flex items-center justify-between border-b pb-2 mb-4">
                       <div>
                         <h3 className="text-lg font-semibold">Generation</h3>
                         {genVersions[0]?.generation_timestamp && (
@@ -199,10 +200,27 @@ export default function PlanVersionsPage() {
                             {formatDateTime(genVersions[0].generation_timestamp)}
                           </p>
                         )}
+                        {genVersions[0]?.generation_id && (
+                          <p className="text-xs text-muted-foreground font-mono mt-1">
+                            ID: {genVersions[0].generation_id.substring(0, 8)}...
+                          </p>
+                        )}
                       </div>
-                      <Badge variant="secondary">
-                        {genVersions.length} change{genVersions.length !== 1 ? "s" : ""}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge variant="secondary">
+                          {genVersions.length} change{genVersions.length !== 1 ? "s" : ""}
+                        </Badge>
+                        {genVersions.some(v => v.delta_days > 0) && (
+                          <Badge variant="destructive" className="text-xs">
+                            {genVersions.filter(v => v.delta_days > 0).length} delayed
+                          </Badge>
+                        )}
+                        {genVersions.some(v => v.delta_days < 0) && (
+                          <Badge variant="default" className="bg-green-600 text-xs">
+                            {genVersions.filter(v => v.delta_days < 0).length} improved
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   )}
                   <Table>
@@ -210,24 +228,39 @@ export default function PlanVersionsPage() {
                       <TableRow>
                         <TableHead>Task</TableHead>
                         <TableHead>Employee</TableHead>
-                        <TableHead>Old Start Date</TableHead>
-                        <TableHead>Old End Date</TableHead>
-                        <TableHead>New Start Date</TableHead>
-                        <TableHead>New End Date</TableHead>
+                        <TableHead>Old Start</TableHead>
+                        <TableHead>Old End</TableHead>
+                        <TableHead>New Start</TableHead>
+                        <TableHead>New End</TableHead>
                         <TableHead className="text-right">Δ Days</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {genVersions.map((version) => (
+                      {genVersions
+                        .sort((a, b) => {
+                          // Sort by task title, then by employee name
+                          const taskCompare = (a.task_title || "").localeCompare(b.task_title || "");
+                          if (taskCompare !== 0) return taskCompare;
+                          return (a.employee_name || "").localeCompare(b.employee_name || "");
+                        })
+                        .map((version) => (
                         <TableRow key={version.id}>
                           <TableCell className="font-medium">
-                            {version.task_title}
+                            {version.task_title || "Unknown Task"}
                           </TableCell>
-                          <TableCell>{version.employee_name}</TableCell>
-                          <TableCell>{formatDate(version.old_start_date)}</TableCell>
-                          <TableCell>{formatDate(version.old_end_date)}</TableCell>
-                          <TableCell>{formatDate(version.new_start_date)}</TableCell>
-                          <TableCell>{formatDate(version.new_end_date)}</TableCell>
+                          <TableCell>{version.employee_name || "Unknown Employee"}</TableCell>
+                          <TableCell>
+                            {version.old_start_date ? formatDate(version.old_start_date) : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {version.old_end_date ? formatDate(version.old_end_date) : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {version.new_start_date ? formatDate(version.new_start_date) : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {version.new_end_date ? formatDate(version.new_end_date) : "-"}
+                          </TableCell>
                           <TableCell className="text-right">
                             {getDeltaBadge(version.delta_days)}
                           </TableCell>

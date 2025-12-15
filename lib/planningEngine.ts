@@ -445,6 +445,9 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
       tasksMap.set(task.id, task.title);
     });
 
+    // Debug: Log what we're comparing
+    console.log(`Version comparison: ${existingPlans?.length || 0} existing plans, ${plans.length} new plans`);
+
     // 2. Compare old and new plans and create version records
     const versionRecords: Array<{
       plan_id: string | null;
@@ -466,13 +469,14 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
       
       // Create maps for different lookups
       const existingPlansMap = new Map<string, any>(); // By task_id-employee_id
-      const existingTasksMap = new Map<string, any>(); // By task_id only (to find reassignments)
+      const existingTasksMap = new Map<string, any>(); // By task_id only (to find reassignments - keep first occurrence)
       
       existingPlans.forEach((plan: any) => {
         const key = `${plan.task_id}-${plan.employee_id}`;
         existingPlansMap.set(key, plan);
         
-        // Track tasks by task_id to detect reassignments
+        // Track tasks by task_id to detect reassignments (keep the first occurrence)
+        // This helps identify when a task moves from one employee to another
         if (!existingTasksMap.has(plan.task_id)) {
           existingTasksMap.set(plan.task_id, plan);
         }
@@ -555,6 +559,12 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
       });
       
       console.log(`Version tracking: ${dateChanges} date changes, ${reassignments} reassignments, ${newTasks} new tasks (not tracked)`);
+      console.log(`Total version records to create: ${versionRecords.length}`);
+      
+      // Debug: Log sample version records
+      if (versionRecords.length > 0) {
+        console.log("Sample version record:", JSON.stringify(versionRecords[0], null, 2));
+      }
     } else {
       console.log("No existing plans found - this is the first plan generation. No versions to track.");
     }

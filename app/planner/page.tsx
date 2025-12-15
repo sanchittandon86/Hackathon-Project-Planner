@@ -20,7 +20,17 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { HowItWorksModal } from "@/components/HowItWorksModal";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type Plan = {
   id: string;
@@ -31,6 +41,8 @@ type Plan = {
   total_hours: number;
   is_overdue?: boolean;
   days_overdue?: number;
+  is_completed?: boolean;
+  completed_at?: string | null;
   task?: {
     title: string;
     client: string;
@@ -106,6 +118,9 @@ export default function PlannerPage() {
         // Ensure is_overdue and days_overdue are properly set
         is_overdue: plan.is_overdue || false,
         days_overdue: plan.days_overdue || 0,
+        // Ensure completion fields are set
+        is_completed: plan.is_completed || false,
+        completed_at: plan.completed_at || null,
       }));
 
       setPlans(plansWithDetails);
@@ -225,7 +240,36 @@ export default function PlannerPage() {
     });
   };
 
-  // Helper function to get status badge for a plan
+  // Helper function to get completion status badge for a plan
+  const getCompletionStatusBadge = (plan: PlanWithDetails) => {
+    if (plan.is_completed) {
+      return (
+        <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Completed
+        </Badge>
+      );
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(plan.start_date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(plan.end_date);
+    endDate.setHours(0, 0, 0, 0);
+
+    if (startDate > today) {
+      return <Badge variant="outline">Not Started</Badge>;
+    }
+
+    if (endDate < today && !plan.is_completed) {
+      return <Badge variant="destructive">Overdue</Badge>;
+    }
+
+    return <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">In Progress</Badge>;
+  };
+
+  // Helper function to get status badge for a plan (due date based)
   const getStatusBadge = (plan: PlanWithDetails) => {
     if (!plan.task_due_date) {
       return null; // No due date, no badge
@@ -262,6 +306,44 @@ export default function PlannerPage() {
         </Badge>
       );
     }
+  };
+
+  // Mark plan as completed
+  const markCompleted = async (planId: string) => {
+    try {
+      const response = await fetch("/api/complete-plan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ plan_id: planId }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Task marked as completed!");
+        // Refresh plans
+        await fetchPlans();
+      } else {
+        toast.error(`Failed to mark as completed: ${data.error || "Unknown error"}`);
+      }
+    } catch (error: any) {
+      console.error("Error marking plan as completed:", error);
+      toast.error("Failed to mark as completed");
+    }
+  };
+
+  // Check if task can be marked as completed
+  const canMarkCompleted = (plan: PlanWithDetails): boolean => {
+    if (plan.is_completed) return false;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(plan.start_date);
+    startDate.setHours(0, 0, 0, 0);
+    
+    return startDate <= today;
   };
 
   // Filter plans based on overdue filter
@@ -360,7 +442,9 @@ export default function PlannerPage() {
             <TableHead>Start Date</TableHead>
             <TableHead>End Date</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Due Date</TableHead>
             <TableHead>Total Hours</TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -375,8 +459,41 @@ export default function PlannerPage() {
               </TableCell>
               <TableCell>{formatDate(plan.start_date)}</TableCell>
               <TableCell>{formatDate(plan.end_date)}</TableCell>
+              <TableCell>{getCompletionStatusBadge(plan)}</TableCell>
               <TableCell>{getStatusBadge(plan)}</TableCell>
               <TableCell>{plan.total_hours}</TableCell>
+              <TableCell>
+                {canMarkCompleted(plan) ? (
+                  <Button
+                    size="sm"
+                    onClick={() => markCompleted(plan.id)}
+                    variant="outline"
+                  >
+                    Mark Completed
+                  </Button>
+                ) : plan.is_completed ? (
+                  <span className="text-sm text-muted-foreground">Completed</span>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            size="sm"
+                            disabled
+                            variant="ghost"
+                          >
+                            Mark Completed
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Cannot complete before start date</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -417,7 +534,9 @@ export default function PlannerPage() {
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Due Date</TableHead>
                     <TableHead>Total Hours</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -429,8 +548,41 @@ export default function PlannerPage() {
                       <TableCell>{plan.employee_name}</TableCell>
                       <TableCell>{formatDate(plan.start_date)}</TableCell>
                       <TableCell>{formatDate(plan.end_date)}</TableCell>
+                      <TableCell>{getCompletionStatusBadge(plan)}</TableCell>
                       <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
+                      <TableCell>
+                        {canMarkCompleted(plan) ? (
+                          <Button
+                            size="sm"
+                            onClick={() => markCompleted(plan.id)}
+                            variant="outline"
+                          >
+                            Mark Completed
+                          </Button>
+                        ) : plan.is_completed ? (
+                          <span className="text-sm text-muted-foreground">Completed</span>
+                        ) : (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    size="sm"
+                                    disabled
+                                    variant="ghost"
+                                  >
+                                    Mark Completed
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Cannot complete before start date</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -481,7 +633,9 @@ export default function PlannerPage() {
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Due Date</TableHead>
                     <TableHead>Total Hours</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -496,8 +650,41 @@ export default function PlannerPage() {
                       </TableCell>
                       <TableCell>{formatDate(plan.start_date)}</TableCell>
                       <TableCell>{formatDate(plan.end_date)}</TableCell>
+                      <TableCell>{getCompletionStatusBadge(plan)}</TableCell>
                       <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
+                      <TableCell>
+                        {canMarkCompleted(plan) ? (
+                          <Button
+                            size="sm"
+                            onClick={() => markCompleted(plan.id)}
+                            variant="outline"
+                          >
+                            Mark Completed
+                          </Button>
+                        ) : plan.is_completed ? (
+                          <span className="text-sm text-muted-foreground">Completed</span>
+                        ) : (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    size="sm"
+                                    disabled
+                                    variant="ghost"
+                                  >
+                                    Mark Completed
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Cannot complete before start date</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -531,7 +718,10 @@ export default function PlannerPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Smart Project Planner</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Smart Project Planner</CardTitle>
+              <HowItWorksModal />
+            </div>
             <Button
               onClick={handleGeneratePlan}
               disabled={generating || loading}
@@ -542,7 +732,7 @@ export default function PlannerPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8">Loading plans...</div>
+            <TableSkeleton rows={6} columns={9} />
           ) : plans.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No plans generated yet. Click "Generate Plan" to create a schedule.

@@ -25,6 +25,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { generatePlanSimulation, type SimulationOptions } from "@/lib/planningEngine";
 import { toast } from "sonner";
 import { Play, RotateCcw, CheckCircle } from "lucide-react";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
+import { SimulatorHowItWorksModal } from "@/components/SimulatorHowItWorksModal";
 
 type Task = {
   id: string;
@@ -310,10 +312,17 @@ export default function SimulatorPage() {
     <div className="container mx-auto py-8 px-4 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>What-If Scenario Simulator</CardTitle>
-          <CardDescription>
-            Simulate plan changes without modifying the real plan. Test different scenarios before applying.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <CardTitle>What-If Scenario Simulator</CardTitle>
+                <SimulatorHowItWorksModal />
+              </div>
+              <CardDescription>
+                Simulate plan changes without modifying the real plan. Test different scenarios before applying.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Delayed Tasks Section */}
@@ -450,7 +459,19 @@ export default function SimulatorPage() {
       </Card>
 
       {/* Simulation Results */}
-      {simulatedPlans.length > 0 && (
+      {simulating ? (
+        <Card className="border-2 border-blue-500">
+          <CardHeader>
+            <CardTitle className="text-blue-600">Running Simulation...</CardTitle>
+            <CardDescription>
+              Please wait while we calculate the simulated plan.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TableSkeleton rows={6} columns={7} />
+          </CardContent>
+        </Card>
+      ) : simulatedPlans.length > 0 && (
         <Card className="border-2 border-blue-500">
           <CardHeader>
             <CardTitle className="text-blue-600">Simulation Results</CardTitle>

@@ -39,7 +39,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Pencil, Trash2, Plus, Loader2, Search, X, Users, UserCheck, Code, Bug } from "lucide-react";
+import { Pencil, Trash2, Plus, Loader2, Search, X, Users, UserCheck, Code, Bug, Upload } from "lucide-react";
+import { CSVUploadDialog } from "@/components/CSVUploadDialog";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -49,6 +51,7 @@ export default function EmployeesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [deleteEmployeeId, setDeleteEmployeeId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -243,6 +246,56 @@ export default function EmployeesPage() {
     }
   };
 
+  // Handle CSV import
+  const handleCSVImport = async (rows: Array<Record<string, string>>) => {
+    const validRows: EmployeeInsert[] = [];
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      try {
+        const employee: EmployeeInsert = {
+          name: row.name?.trim() || "",
+          designation: row.designation?.trim() as "Developer" | "QA" || "Developer",
+          active: true,
+        };
+
+        // Validate
+        if (!employee.name) {
+          errors.push(`Row missing name`);
+          continue;
+        }
+
+        if (employee.designation !== "Developer" && employee.designation !== "QA") {
+          errors.push(`Row "${employee.name}": Invalid designation. Must be Developer or QA`);
+          continue;
+        }
+
+        validRows.push(employee);
+      } catch (error: any) {
+        errors.push(`Row parsing error: ${error.message}`);
+      }
+    }
+
+    if (validRows.length === 0) {
+      return { success: false, inserted: 0, errors };
+    }
+
+    try {
+      const { error } = await supabase
+        .from("employees")
+        .insert(validRows.map((emp) => ({ ...emp, last_updated: new Date().toISOString() })));
+
+      if (error) {
+        return { success: false, inserted: 0, errors: [error.message] };
+      }
+
+      await fetchEmployees();
+      return { success: true, inserted: validRows.length, errors };
+    } catch (error: any) {
+      return { success: false, inserted: 0, errors: [error.message] };
+    }
+  };
+
   // Filter employees based on search and filters
   const filteredEmployees = employees.filter((employee) => {
     const matchesSearch = employee.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -341,13 +394,14 @@ export default function EmployeesPage() {
                 Manage your organization's employee records
               </CardDescription>
             </div>
-            <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
-              <DialogTrigger asChild>
-                <Button onClick={openAddDialog} size="lg">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Employee
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+                <DialogTrigger asChild>
+                  <Button onClick={openAddDialog} size="lg">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Employee
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                   <DialogTitle>
@@ -429,6 +483,15 @@ export default function EmployeesPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+              <Button
+                onClick={() => setCsvDialogOpen(true)}
+                size="lg"
+                variant="outline"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Upload CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -492,9 +555,8 @@ export default function EmployeesPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-3 text-muted-foreground">Loading employees...</span>
+            <div className="rounded-lg border overflow-hidden">
+              <TableSkeleton rows={6} columns={4} />
             </div>
           ) : employees.length === 0 ? (
             <div className="text-center py-12">
@@ -624,6 +686,34 @@ export default function EmployeesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CSV Upload Dialog */}
+      <CSVUploadDialog
+        open={csvDialogOpen}
+        onOpenChange={setCsvDialogOpen}
+        title="Upload Employees CSV"
+        description="Upload or paste CSV data to bulk import employees. Expected columns: name, designation"
+        columns={[
+          {
+            key: "name",
+            label: "Name",
+            required: true,
+          },
+          {
+            key: "designation",
+            label: "Designation",
+            required: true,
+            validator: (value) => {
+              if (value !== "Developer" && value !== "QA") {
+                return "Must be 'Developer' or 'QA'";
+              }
+              return null;
+            },
+          },
+        ]}
+        onImport={handleCSVImport}
+        sampleData="John Doe,Developer\nSarah Lee,QA\nMike Smith,Developer"
+      />
     </div>
   );
 }

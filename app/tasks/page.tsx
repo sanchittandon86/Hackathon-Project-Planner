@@ -38,7 +38,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Pencil, Trash2, Plus, Loader2, Clock, Search, X, ListTodo, Code, Bug, TrendingUp } from "lucide-react";
+import { Pencil, Trash2, Plus, Loader2, Clock, Search, X, ListTodo, Code, Bug, TrendingUp, Upload } from "lucide-react";
+import { CSVUploadDialog } from "@/components/CSVUploadDialog";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -48,6 +50,7 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [deleteTaskId, setDeleteTaskId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -253,6 +256,68 @@ export default function TasksPage() {
     setSelectedTask(null);
   };
 
+  // Handle CSV import
+  const handleCSVImport = async (rows: Array<Record<string, string>>) => {
+    const validRows: TaskInsert[] = [];
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      try {
+        const task: TaskInsert = {
+          title: row.title?.trim() || "",
+          client: row.client?.trim() || "",
+          effort_hours: parseInt(row.effort_hours || "0", 10),
+          designation_required: (row.designation_required?.trim() as "Developer" | "QA") || "Developer",
+          due_date: row.due_date?.trim() || null,
+        };
+
+        // Validate
+        if (!task.title) {
+          errors.push(`Row missing title`);
+          continue;
+        }
+
+        if (!task.client) {
+          errors.push(`Row "${task.title}": Missing client`);
+          continue;
+        }
+
+        if (isNaN(task.effort_hours) || task.effort_hours <= 0) {
+          errors.push(`Row "${task.title}": Invalid effort_hours. Must be a positive number`);
+          continue;
+        }
+
+        if (task.designation_required !== "Developer" && task.designation_required !== "QA") {
+          errors.push(`Row "${task.title}": Invalid designation_required. Must be Developer or QA`);
+          continue;
+        }
+
+        validRows.push(task);
+      } catch (error: any) {
+        errors.push(`Row parsing error: ${error.message}`);
+      }
+    }
+
+    if (validRows.length === 0) {
+      return { success: false, inserted: 0, errors };
+    }
+
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .insert(validRows.map((task) => ({ ...task, last_updated: new Date().toISOString() })));
+
+      if (error) {
+        return { success: false, inserted: 0, errors: [error.message] };
+      }
+
+      await fetchTasks();
+      return { success: true, inserted: validRows.length, errors };
+    } catch (error: any) {
+      return { success: false, inserted: 0, errors: [error.message] };
+    }
+  };
+
   // Handle dialog close
   const handleDialogClose = (open: boolean) => {
     setIsDialogOpen(open);
@@ -356,13 +421,14 @@ export default function TasksPage() {
                 Manage project tasks and client requirements
               </CardDescription>
             </div>
-            <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
-              <DialogTrigger asChild>
-                <Button onClick={openAddDialog} size="lg">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Task
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+                <DialogTrigger asChild>
+                  <Button onClick={openAddDialog} size="lg">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Task
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[550px]">
                 <DialogHeader>
                   <DialogTitle>
@@ -472,6 +538,15 @@ export default function TasksPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+              <Button
+                onClick={() => setCsvDialogOpen(true)}
+                size="lg"
+                variant="outline"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Upload CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -520,9 +595,8 @@ export default function TasksPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-3 text-muted-foreground">Loading tasks...</span>
+            <div className="rounded-lg border overflow-hidden">
+              <TableSkeleton rows={6} columns={6} />
             </div>
           ) : tasks.length === 0 ? (
             <div className="text-center py-12">
@@ -661,6 +735,56 @@ export default function TasksPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CSV Upload Dialog */}
+      <CSVUploadDialog
+        open={csvDialogOpen}
+        onOpenChange={setCsvDialogOpen}
+        title="Upload Tasks CSV"
+        description="Upload or paste CSV data to bulk import tasks. Expected columns: title, client, effort_hours, designation_required, due_date (optional)"
+        columns={[
+          {
+            key: "title",
+            label: "Title",
+            required: true,
+          },
+          {
+            key: "client",
+            label: "Client",
+            required: true,
+          },
+          {
+            key: "effort_hours",
+            label: "Effort Hours",
+            required: true,
+            validator: (value) => {
+              const num = parseInt(value, 10);
+              if (isNaN(num) || num <= 0) {
+                return "Must be a positive number";
+              }
+              return null;
+            },
+          },
+          {
+            key: "designation_required",
+            label: "Designation Required",
+            required: true,
+            validator: (value) => {
+              if (value !== "Developer" && value !== "QA") {
+                return "Must be 'Developer' or 'QA'";
+              }
+              return null;
+            },
+          },
+          {
+            key: "due_date",
+            label: "Due Date (Optional)",
+            required: false,
+          },
+        ]}
+        onImport={handleCSVImport}
+        sampleData="Build API,Client A,24,Developer,2024-12-31\nUI Testing,Client B,16,QA,2024-12-15"
+      />
     </div>
   );
 }
