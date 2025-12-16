@@ -673,17 +673,23 @@ export async function savePlanToDB(
       excludeCompleted,
       generationId,
     });
-    let deleteQuery = supabase.from("plans");
     
+    let deleteError;
     if (excludeCompleted) {
       // Only delete non-completed plans
-      deleteQuery = deleteQuery.delete().eq("is_completed", false);
+      const { error } = await supabase
+        .from("plans")
+        .delete()
+        .eq("is_completed", false);
+      deleteError = error;
     } else {
       // Delete all plans
-      deleteQuery = deleteQuery.delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error } = await supabase
+        .from("plans")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      deleteError = error;
     }
-    
-    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       console.error("[PLANNER:BE] savePlanToDB - Error deleting old plans", {
