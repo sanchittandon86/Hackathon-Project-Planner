@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Smart Project Planner
+
+An intelligent project planning and resource allocation system built with Next.js and Supabase.
+
+## Features
+
+- **Task Management**: Create and manage tasks with effort estimates and due dates
+- **Employee Management**: Track employees and their designations
+- **Leave Management**: Manage employee leaves
+- **Smart Planning**: Automatically generate optimized project plans based on employee availability and workload
+- **Version Control**: Track plan changes and version history
+- **Simulation**: Test different scenarios before applying changes
+- **Dashboard**: View analytics and workload distribution
+- **Excel Export**: Export version history to Excel
+
+## Tech Stack
+
+- **Framework**: Next.js 16
+- **Database**: Supabase (PostgreSQL)
+- **UI**: React 19, Tailwind CSS, Radix UI
+- **Charts**: Recharts
+- **Excel Export**: xlsx
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 20+
+- npm or yarn
+- Supabase account and project
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Set up environment variables:
+   Create a `.env.local` file with your Supabase credentials:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+4. Start the development server:
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Add Employees**: Navigate to Employees page and add team members
+2. **Add Tasks**: Create tasks with effort hours, designations, and due dates
+3. **Manage Leaves**: Add employee leave dates
+4. **Generate Plan**: Click "Generate Plan" to create an optimized schedule
+5. **View Versions**: Check version history to see plan changes over time
+6. **Export Data**: Export version history to Excel for reporting
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/              # Next.js app router pages
+lib/              # Business logic and utilities
+components/       # React components
+types/           # TypeScript type definitions
+docs/            # Documentation
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run dev` - Start development server (for development)
+- `npm run build` - Build for production (must run before `start`)
+- `npm run start` - Start production server (requires build first)
+- `npm run lint` - Run ESLint
 
-## Deploy on Vercel
+**Note**: To run in production mode, first build the app with `npm run build`, then start it with `npm run start`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private project
