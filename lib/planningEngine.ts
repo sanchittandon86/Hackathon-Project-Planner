@@ -1,5 +1,6 @@
-import { supabase } from "./supabaseClient";
 import { addDays, isWeekend } from "date-fns";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { formatDateLocal } from "@/lib/utils";
 
 type Employee = {
   id: string;
@@ -32,7 +33,10 @@ export type PlanResult = {
   days_overdue: number;
 };
 
-export async function generatePlan(): Promise<PlanResult[]> {
+export async function generatePlan(
+  supabase: SupabaseClient,
+  excludeCompleted: boolean = false
+): Promise<PlanResult[]> {
   // 1. Fetch all master data
   const { data: employees, error: empError } = await supabase
     .from("employees")
@@ -41,6 +45,19 @@ export async function generatePlan(): Promise<PlanResult[]> {
   const { data: tasks, error: taskError } = await supabase
     .from("tasks")
     .select("*");
+
+  // If excluding completed plans, fetch completed plan task IDs
+  let completedTaskIds: Set<string> = new Set();
+  if (excludeCompleted) {
+    const { data: completedPlans } = await supabase
+      .from("plans")
+      .select("task_id")
+      .eq("is_completed", true);
+    
+    if (completedPlans) {
+      completedTaskIds = new Set(completedPlans.map((p: any) => String(p.task_id)));
+    }
+  }
 
   const { data: leaves, error: leaveError } = await supabase
     .from("leaves")
@@ -53,8 +70,18 @@ export async function generatePlan(): Promise<PlanResult[]> {
 
   if (!employees || !tasks) return [];
 
+  // Filter out tasks with completed plans if excludeCompleted is true
+  const tasksToPlan = excludeCompleted
+    ? tasks.filter((task) => !completedTaskIds.has(String(task.id)))
+    : tasks;
+
+  if (tasksToPlan.length === 0) {
+    console.log("No tasks to plan (all tasks are completed)");
+    return [];
+  }
+
   // Sort tasks by effort (smallest first for better distribution)
-  tasks.sort((a, b) => a.effort_hours - b.effort_hours);
+  tasksToPlan.sort((a, b) => a.effort_hours - b.effort_hours);
 
   const plans: PlanResult[] = [];
   const employeeWorkload: Map<string, Date> = new Map(); // Track when each employee is next available
@@ -69,7 +96,7 @@ export async function generatePlan(): Promise<PlanResult[]> {
   // Helper: check if employee is on leave on a specific day
   const isOnLeave = (empId: string, date: Date): boolean => {
     if (!leaves) return false;
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDateLocal(date);
     return leaves.some(
       (l) => l.employee_id === empId && l.leave_date === dateStr
     );
@@ -99,7 +126,7 @@ export async function generatePlan(): Promise<PlanResult[]> {
   };
 
   // 2. For each task, assign to the least loaded matching employee
-  for (const task of tasks) {
+  for (const task of tasksToPlan) {
     // Find employees with matching designation
     const candidates = employees.filter(
       (emp) => emp.designation === task.designation_required
@@ -135,12 +162,12 @@ export async function generatePlan(): Promise<PlanResult[]> {
       }
 
       if (!startDate) {
-        startDate = current.toISOString().split("T")[0];
+        startDate = formatDateLocal(current);
       }
 
       // Allocate 8 hours for this day
       remaining -= 8;
-      endDate = current.toISOString().split("T")[0];
+      endDate = formatDateLocal(current);
       current = addDays(current, 1);
     }
 
@@ -188,6 +215,7 @@ export type SimulationOptions = {
 
 // Generate plan with simulation overrides (does NOT save to DB)
 export async function generatePlanSimulation(
+  supabase: SupabaseClient,
   options: SimulationOptions = {}
 ): Promise<PlanResult[]> {
   // 1. Fetch all master data
@@ -237,7 +265,7 @@ export async function generatePlanSimulation(
     let current = new Date(fromDate);
     
     while (current <= toDate) {
-      const dateStr = current.toISOString().split("T")[0];
+      const dateStr = formatDateLocal(current);
       // Only add if not already a leave
       if (!extendedLeaves.some(l => l.employee_id === be.employee_id && l.leave_date === dateStr)) {
         extendedLeaves.push({
@@ -266,7 +294,7 @@ export async function generatePlanSimulation(
   // Helper: check if employee is on leave or blocked on a specific day
   const isOnLeave = (empId: string, date: Date): boolean => {
     if (!extendedLeaves) return false;
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDateLocal(date);
     return extendedLeaves.some(
       (l) => l.employee_id === empId && l.leave_date === dateStr
     );
@@ -346,12 +374,12 @@ export async function generatePlanSimulation(
       }
 
       if (!startDate) {
-        startDate = current.toISOString().split("T")[0];
+        startDate = formatDateLocal(current);
       }
 
       // Allocate 8 hours for this day
       remaining -= 8;
-      endDate = current.toISOString().split("T")[0];
+      endDate = formatDateLocal(current);
       current = addDays(current, 1);
     }
 
@@ -390,23 +418,41 @@ export async function generatePlanSimulation(
   return plans;
 }
 
-export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
+export async function savePlanToDB(
+  supabase: SupabaseClient,
+  plans: PlanResult[],
+  excludeCompleted: boolean = false
+): Promise<boolean> {
+  console.log("[PLANNER:BE] savePlanToDB - Starting plan save", {
+    planCount: plans.length,
+    excludeCompleted,
+  });
   try {
     // Generate a unique generation ID for this plan generation run
     // This groups all version records created in this single "Generate Plan" click
     const generationId = crypto.randomUUID();
     const generationTimestamp = new Date().toISOString();
     
-    console.log(`Starting plan generation with generation_id: ${generationId}`);
+    console.log("[PLANNER:BE] savePlanToDB - Generation ID created", {
+      generationId,
+      generationTimestamp,
+    });
 
     // 1. Fetch existing plans for comparison
+    console.log("[PLANNER:BE] savePlanToDB - Fetching existing plans for comparison");
     const { data: existingPlans, error: fetchError } = await supabase
       .from("plans")
       .select("*");
 
     if (fetchError) {
-      console.error("Error fetching existing plans:", fetchError);
+      console.error("[PLANNER:BE] savePlanToDB - Error fetching existing plans", {
+        error: fetchError.message,
+      });
       // Continue anyway - might be first run
+    } else {
+      console.log("[PLANNER:BE] savePlanToDB - Existing plans fetched", {
+        existingPlanCount: existingPlans?.length || 0,
+      });
     }
 
     // Fetch employee and task details for version records
@@ -446,7 +492,11 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
     });
 
     // Debug: Log what we're comparing
-    console.log(`Version comparison: ${existingPlans?.length || 0} existing plans, ${plans.length} new plans`);
+    console.log("[PLANNER:BE] savePlanToDB - Version comparison", {
+      existingPlanCount: existingPlans?.length || 0,
+      newPlanCount: plans.length,
+      generationId,
+    });
 
     // 2. Compare old and new plans and create version records
     const versionRecords: Array<{
@@ -465,7 +515,11 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
     }> = [];
 
     if (existingPlans && existingPlans.length > 0) {
-      console.log(`Comparing ${existingPlans.length} existing plans with ${plans.length} new plans`);
+      console.log("[PLANNER:BE] savePlanToDB - Comparing plans for version tracking", {
+        existingPlanCount: existingPlans.length,
+        newPlanCount: plans.length,
+        generationId,
+      });
       
       // Create maps for different lookups
       const existingPlansMap = new Map<string, any>(); // By task_id-employee_id
@@ -558,53 +612,99 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
         }
       });
       
-      console.log(`Version tracking: ${dateChanges} date changes, ${reassignments} reassignments, ${newTasks} new tasks (not tracked)`);
-      console.log(`Total version records to create: ${versionRecords.length}`);
+      console.log("[PLANNER:BE] savePlanToDB - Version tracking summary", {
+        dateChanges,
+        reassignments,
+        newTasks,
+        totalVersionRecords: versionRecords.length,
+        generationId,
+      });
       
       // Debug: Log sample version records
       if (versionRecords.length > 0) {
-        console.log("Sample version record:", JSON.stringify(versionRecords[0], null, 2));
+        console.log("[PLANNER:BE] savePlanToDB - Sample version record", {
+          sample: versionRecords[0],
+          generationId,
+        });
       }
     } else {
-      console.log("No existing plans found - this is the first plan generation. No versions to track.");
+      console.log("[PLANNER:BE] savePlanToDB - No existing plans found, first generation", {
+        generationId,
+      });
     }
 
     // Insert version records if any changes detected
     // IMPORTANT: Insert BEFORE deleting plans, otherwise cascade delete will remove versions
     if (versionRecords.length > 0) {
-      console.log(`Creating ${versionRecords.length} version records with generation_id: ${generationId}...`);
+      console.log("[VERSIONS:BE] savePlanToDB - Creating version records", {
+        versionRecordCount: versionRecords.length,
+        generationId,
+      });
       const { data: insertedVersions, error: versionError } = await supabase
         .from("plan_versions")
         .insert(versionRecords)
         .select();
 
       if (versionError) {
-        console.error("Error inserting version records:", versionError);
-        console.error("Version records that failed:", versionRecords);
+        console.error("[VERSIONS:BE] savePlanToDB - Error inserting version records", {
+          error: versionError.message,
+          versionRecordCount: versionRecords.length,
+          generationId,
+        });
         // Continue anyway - versioning is not critical
       } else {
-        console.log(`Successfully created ${insertedVersions?.length || 0} version records for generation ${generationId}`);
-        console.log("Inserted version IDs:", insertedVersions?.map((v: any) => v.id));
+        console.log("[VERSIONS:BE] savePlanToDB - Version records created successfully", {
+          insertedCount: insertedVersions?.length || 0,
+          generationId,
+          versionIds: insertedVersions?.map((v: any) => v.id),
+        });
       }
     } else {
-      console.log(`No version records to create (no date changes detected) for generation ${generationId}`);
+      console.log("[VERSIONS:BE] savePlanToDB - No version records to create", {
+        generationId,
+        reason: "no_date_changes_detected",
+      });
     }
 
-    // 3. Delete old plans
+    // 3. Delete old plans (excluding completed ones if excludeCompleted is true)
     // NOTE: If plan_versions has "on delete cascade", versions will be deleted too
     // Solution: Make plan_id nullable or change to "on delete set null"
-    const { error: deleteError } = await supabase
-      .from("plans")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
+    console.log("[PLANNER:BE] savePlanToDB - Deleting old plans", {
+      excludeCompleted,
+      generationId,
+    });
+    let deleteQuery = supabase.from("plans");
+    
+    if (excludeCompleted) {
+      // Only delete non-completed plans
+      deleteQuery = deleteQuery.delete().eq("is_completed", false);
+    } else {
+      // Delete all plans
+      deleteQuery = deleteQuery.delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    }
+    
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
-      console.error("Error deleting old plans:", deleteError);
+      console.error("[PLANNER:BE] savePlanToDB - Error deleting old plans", {
+        error: deleteError.message,
+        excludeCompleted,
+        generationId,
+      });
       // Continue anyway - might be first run or empty table
+    } else {
+      console.log("[PLANNER:BE] savePlanToDB - Old plans deleted successfully", {
+        excludeCompleted,
+        generationId,
+      });
     }
 
     // 4. Insert new plans
     if (plans.length > 0) {
+      console.log("[PLANNER:BE] savePlanToDB - Inserting new plans", {
+        planCount: plans.length,
+        generationId,
+      });
       const plansWithTimestamp = plans.map((plan) => ({
         ...plan,
         last_updated: new Date().toISOString(),
@@ -614,14 +714,30 @@ export async function savePlanToDB(plans: PlanResult[]): Promise<boolean> {
         .insert(plansWithTimestamp);
 
       if (insertError) {
-        console.error("Error inserting plans:", insertError);
+        console.error("[PLANNER:BE] savePlanToDB - Error inserting plans", {
+          error: insertError.message,
+          planCount: plans.length,
+          generationId,
+        });
         return false;
       }
+      console.log("[PLANNER:BE] savePlanToDB - Plans inserted successfully", {
+        planCount: plans.length,
+        generationId,
+      });
     }
 
+    console.log("[PLANNER:BE] savePlanToDB - Success", {
+      planCount: plans.length,
+      generationId,
+    });
     return true;
   } catch (error: unknown) {
-    console.error("Error saving plan to DB:", error);
+    console.error("[PLANNER:BE] savePlanToDB - Unexpected error", {
+      error,
+      planCount: plans.length,
+      excludeCompleted,
+    });
     return false;
   }
 }
