@@ -4,6 +4,8 @@ import LeavesClient from "./LeavesClient";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Server Component - Leaves Page
  * 

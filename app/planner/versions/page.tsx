@@ -5,6 +5,8 @@ import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Server Component - Plan Versions Page
  * 

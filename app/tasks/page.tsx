@@ -10,6 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Server Component - Tasks Page
  * 

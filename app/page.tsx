@@ -5,6 +5,8 @@ import DashboardCharts from "@/components/dashboard/DashboardCharts";
 import DashboardCards from "@/components/dashboard/DashboardCards";
 import DashboardSkeleton from "@/components/dashboard/DashboardSkeleton";
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Server Component - Dashboard Home Page
  * 
