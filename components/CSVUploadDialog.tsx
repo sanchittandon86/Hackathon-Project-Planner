@@ -58,23 +58,84 @@ export function CSVUploadDialog({
   const [importing, setImporting] = useState(false);
   const [uploadMode, setUploadMode] = useState<"file" | "paste">("file");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Progress tracking state
+  const [parsingProgress, setParsingProgress] = useState(0);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsingStatus, setParsingStatus] = useState<"idle" | "parsing" | "uploading">("idle");
+  const [totalRows, setTotalRows] = useState(0);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Reset state and start parsing
+    setIsParsing(true);
+    setParsingStatus("parsing");
+    setParsingProgress(0);
+    setTotalRows(0);
+    setParsedData([]);
+    setValidationErrors([]);
+
+    const parseStartTime = performance.now();
+    if (process.env.NODE_ENV === "development") {
+      console.log("[CSV] Parsing started", { fileName: file.name, fileSize: file.size });
+    }
+
+    // Collect data in step callback when using worker mode
+    const parsedRows: CSVRow[] = [];
+    let rowCount = 0;
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      worker: true, // Use web worker to avoid blocking UI thread
+      step: (result, parser) => {
+        // Collect each row as it's parsed
+        if (result.data) {
+          parsedRows.push(result.data as CSVRow);
+          rowCount++;
+        }
+        
+        // Track progress: estimate based on file position
+        // Note: PapaParse doesn't provide total row count in step, so we estimate
+        if (result.meta && file.size > 0) {
+          const currentProgress = Math.min(95, (result.meta.cursor / file.size) * 100);
+          setParsingProgress(currentProgress);
+        }
+      },
       complete: (results) => {
-        if (results.errors.length > 0) {
+        const parseEndTime = performance.now();
+        const parseDuration = parseEndTime - parseStartTime;
+
+        if (process.env.NODE_ENV === "development") {
+          console.log("[CSV] Parsing completed", {
+            rows: rowCount,
+            duration: `${parseDuration.toFixed(2)}ms`,
+            errors: results?.errors?.length || 0,
+          });
+        }
+
+        setParsingProgress(100);
+        setIsParsing(false);
+        setTotalRows(rowCount);
+
+        if (results?.errors && results.errors.length > 0) {
           toast.error("CSV parsing errors detected");
           console.error("CSV errors:", results.errors);
         }
-        validateAndSetData(results.data as CSVRow[]);
+        
+        // Use collected data from step callback
+        validateAndSetData(parsedRows);
       },
       error: (error: Error) => {
+        setIsParsing(false);
+        setParsingStatus("idle");
+        setParsingProgress(0);
         toast.error(`Error parsing CSV: ${error.message}`);
+        if (process.env.NODE_ENV === "development") {
+          console.error("[CSV] Parsing error", { error: error.message });
+        }
       },
     });
   };
@@ -85,18 +146,72 @@ export function CSVUploadDialog({
       return;
     }
 
+    // Reset state and start parsing
+    setIsParsing(true);
+    setParsingStatus("parsing");
+    setParsingProgress(0);
+    setTotalRows(0);
+    setParsedData([]);
+    setValidationErrors([]);
+
+    const parseStartTime = performance.now();
+    if (process.env.NODE_ENV === "development") {
+      console.log("[CSV] Parsing started (paste mode)", { textLength: csvText.length });
+    }
+
+    // Collect data in step callback when using worker mode
+    const parsedRows: CSVRow[] = [];
+    let rowCount = 0;
+
     Papa.parse(csvText, {
       header: true,
       skipEmptyLines: true,
+      worker: true, // Use web worker to avoid blocking UI thread
+      step: (result, parser) => {
+        // Collect each row as it's parsed
+        if (result.data) {
+          parsedRows.push(result.data as CSVRow);
+          rowCount++;
+        }
+        
+        // Track progress: estimate based on text position
+        if (result.meta && csvText.length > 0) {
+          const currentProgress = Math.min(95, (result.meta.cursor / csvText.length) * 100);
+          setParsingProgress(currentProgress);
+        }
+      },
       complete: (results) => {
-        if (results.errors.length > 0) {
+        const parseEndTime = performance.now();
+        const parseDuration = parseEndTime - parseStartTime;
+
+        if (process.env.NODE_ENV === "development") {
+          console.log("[CSV] Parsing completed (paste mode)", {
+            rows: rowCount,
+            duration: `${parseDuration.toFixed(2)}ms`,
+            errors: results?.errors?.length || 0,
+          });
+        }
+
+        setParsingProgress(100);
+        setIsParsing(false);
+        setTotalRows(rowCount);
+
+        if (results?.errors && results.errors.length > 0) {
           toast.error("CSV parsing errors detected");
           console.error("CSV errors:", results.errors);
         }
-        validateAndSetData(results.data as CSVRow[]);
+        
+        // Use collected data from step callback
+        validateAndSetData(parsedRows);
       },
       error: (error: Error) => {
+        setIsParsing(false);
+        setParsingStatus("idle");
+        setParsingProgress(0);
         toast.error(`Error parsing CSV: ${error.message}`);
+        if (process.env.NODE_ENV === "development") {
+          console.error("[CSV] Parsing error (paste mode)", { error: error.message });
+        }
       },
     });
   };
@@ -164,8 +279,26 @@ export function CSVUploadDialog({
     }
 
     setImporting(true);
+    setParsingStatus("uploading");
+    setParsingProgress(100); // Keep at 100% during upload
+
+    const uploadStartTime = performance.now();
+    if (process.env.NODE_ENV === "development") {
+      console.log("[CSV] Upload started", { rowCount: validRows.length });
+        }
+
     try {
       const result = await onImport(validRows);
+      
+      const uploadEndTime = performance.now();
+      const uploadDuration = uploadEndTime - uploadStartTime;
+      
+      if (process.env.NODE_ENV === "development") {
+        console.log("[CSV] Upload completed", {
+          inserted: result.inserted,
+          duration: `${uploadDuration.toFixed(2)}ms`,
+        });
+      }
       
       if (result.success) {
         const skipped = parsedData.length - result.inserted;
@@ -186,6 +319,8 @@ export function CSVUploadDialog({
       toast.error(`Import failed: ${error.message || "Unknown error"}`);
     } finally {
       setImporting(false);
+      setParsingStatus("idle");
+      setParsingProgress(0);
     }
   };
 
@@ -194,6 +329,10 @@ export function CSVUploadDialog({
     setParsedData([]);
     setValidationErrors([]);
     setUploadMode("file");
+    setParsingProgress(0);
+    setIsParsing(false);
+    setParsingStatus("idle");
+    setTotalRows(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -213,6 +352,24 @@ export function CSVUploadDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Progress Bar */}
+          {(isParsing || parsingStatus === "uploading") && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {parsingStatus === "parsing" ? "Parsing CSV..." : "Uploading data..."}
+                </span>
+                <span className="text-muted-foreground">{Math.round(parsingProgress)}%</span>
+              </div>
+              <div className="w-full bg-secondary rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${parsingProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Upload Mode Toggle */}
           <div className="flex gap-4">
             <Button
@@ -351,9 +508,13 @@ export function CSVUploadDialog({
           </Button>
           <Button
             onClick={handleImport}
-            disabled={importing || parsedData.length === 0 || validationErrors.length > 0}
+            disabled={importing || isParsing || parsedData.length === 0 || validationErrors.length > 0}
           >
-            {importing ? "Importing..." : `Import ${parsedData.filter((_, i) => isValidRow(i)).length} Row(s)`}
+            {isParsing
+              ? "Parsing CSV..."
+              : importing
+              ? "Uploading data..."
+              : `Import ${parsedData.filter((_, i) => isValidRow(i)).length} Row(s)`}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -187,20 +187,20 @@ export default function VersionsClient({
           <div className="flex items-center justify-between">
             <CardTitle>Plan Version History</CardTitle>
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="groupByGeneration"
-                  checked={groupByGeneration}
-                  onChange={(e) => setGroupByGeneration(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label
-                  htmlFor="groupByGeneration"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Group by generation
-                </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="groupByGeneration"
+                checked={groupByGeneration}
+                onChange={(e) => setGroupByGeneration(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <label
+                htmlFor="groupByGeneration"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Group by generation
+              </label>
               </div>
               <Button
                 onClick={exportToExcel}

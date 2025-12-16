@@ -48,9 +48,10 @@ export async function addEmployee(
       };
     }
 
-    // Revalidate the employees page to show new data
+    // Revalidate the employees page and planner page to show new data
     revalidatePath("/employees");
-    console.log("[EMPLOYEES:ACTION] addEmployee - Success, revalidated path");
+    revalidatePath("/planner"); // Also revalidate planner to trigger recalculation check
+    console.log("[EMPLOYEES:ACTION] addEmployee - Success, revalidated paths");
 
     return {
       success: true,
@@ -96,9 +97,10 @@ export async function updateEmployee(
       };
     }
 
-    // Revalidate the employees page to show updated data
+    // Revalidate the employees page and planner page to show updated data
     revalidatePath("/employees");
-    console.log("[EMPLOYEES:ACTION] updateEmployee - Success, revalidated path");
+    revalidatePath("/planner"); // Also revalidate planner to trigger recalculation check
+    console.log("[EMPLOYEES:ACTION] updateEmployee - Success, revalidated paths");
 
     return {
       success: true,
@@ -183,14 +185,18 @@ export async function deleteEmployee(id: number): Promise<ActionResult> {
 
 /**
  * Bulk import employees from CSV data
+ * Optimized with chunking for large datasets (>1000 rows)
  */
 export async function bulkImportEmployees(
   employees: EmployeeInsert[]
 ): Promise<ActionResult<{ inserted: number }>> {
-  console.log("[EMPLOYEES:ACTION] bulkImportEmployees called", { count: employees.length });
+  const startTime = performance.now();
+  console.log("[EMPLOYEES:BE] bulkImportEmployees - Called", { rowCount: employees.length });
+  
   try {
-    if (employees.length === 0) {
-      console.log("[EMPLOYEES:ACTION] bulkImportEmployees - Validation failed: empty array");
+    // Validate input: reject empty arrays
+    if (!employees || employees.length === 0) {
+      console.log("[EMPLOYEES:BE] bulkImportEmployees - Validation failed: empty array");
       return {
         success: false,
         error: "No valid employees to import",
@@ -199,35 +205,91 @@ export async function bulkImportEmployees(
 
     const supabase = createServerSupabaseClient();
 
+    // Prepare data with timestamps
+    const employeesWithTimestamp = employees.map((emp) => ({
+      ...emp,
+      last_updated: new Date().toISOString(),
+    }));
+
+    let totalInserted = 0;
+    const CHUNK_SIZE = 500;
+    const needsChunking = employeesWithTimestamp.length > 1000;
+
+    if (needsChunking) {
+      // Chunk inserts into batches of 500 for large datasets
+      const chunks: EmployeeInsert[][] = [];
+      for (let i = 0; i < employeesWithTimestamp.length; i += CHUNK_SIZE) {
+        chunks.push(employeesWithTimestamp.slice(i, i + CHUNK_SIZE));
+      }
+
+      console.log("[EMPLOYEES:BE] bulkImportEmployees - Chunking required", {
+        totalRows: employeesWithTimestamp.length,
+        chunkCount: chunks.length,
+        chunkSize: CHUNK_SIZE,
+      });
+
+      // Insert chunks sequentially to avoid overwhelming the database
+      for (let i = 0; i < chunks.length; i++) {
+        const { error } = await supabase
+          .from("employees")
+          .insert(chunks[i]);
+
+        if (error) {
+          console.error("[EMPLOYEES:BE] bulkImportEmployees - Supabase error on chunk", {
+            chunkIndex: i + 1,
+            chunkSize: chunks[i].length,
+            error: error.message,
+          });
+          return {
+            success: false,
+            error: error.message || "Failed to import employees. Please try again.",
+          };
+        }
+
+        totalInserted += chunks[i].length;
+      }
+    } else {
+      // Single bulk insert for smaller datasets
     const { error } = await supabase
       .from("employees")
-      .insert(
-        employees.map((emp) => ({
-          ...emp,
-          last_updated: new Date().toISOString(),
-        }))
-      );
+        .insert(employeesWithTimestamp);
 
     if (error) {
-      console.error("[EMPLOYEES:ACTION] bulkImportEmployees - Supabase error:", error);
+        console.error("[EMPLOYEES:BE] bulkImportEmployees - Supabase error", {
+          error: error.message,
+        });
       return {
         success: false,
         error: error.message || "Failed to import employees. Please try again.",
       };
     }
 
-    // Revalidate the employees page to show new data
+      totalInserted = employeesWithTimestamp.length;
+    }
+
+    const endTime = performance.now();
+    const duration = endTime - startTime;
+
+    // Revalidate the employees page and planner page to show new data
     revalidatePath("/employees");
-    console.log(`[EMPLOYEES:ACTION] bulkImportEmployees - Success, inserted ${employees.length} employees, revalidated path`);
+    revalidatePath("/planner"); // Also revalidate planner to trigger recalculation check
+    
+    console.log("[EMPLOYEES:BE] bulkImportEmployees - Success", {
+      inserted: totalInserted,
+      chunked: needsChunking,
+      duration: `${duration.toFixed(2)}ms`,
+    });
 
     return {
       success: true,
       data: {
-        inserted: employees.length,
+        inserted: totalInserted,
       },
     };
   } catch (error: any) {
-    console.error("[EMPLOYEES:ACTION] bulkImportEmployees - Unexpected error:", error);
+    console.error("[EMPLOYEES:BE] bulkImportEmployees - Unexpected error", {
+      error: error.message,
+    });
     return {
       success: false,
       error: "An unexpected error occurred.",
