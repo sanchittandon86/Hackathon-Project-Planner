@@ -119,7 +119,7 @@ export function Sidebar() {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-64 p-0">
+          <SheetContent side="left" className="w-64 p-0" title="Navigation Menu">
             <div className="flex h-full flex-col">
               {/* Logo/Header */}
               <div className="flex h-16 items-center border-b px-6">

@@ -454,17 +454,17 @@ export default function EmployeesClient({
       {/* Main Employee Table Card */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-3xl font-bold">Employee Master</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl font-bold">Employee Master</CardTitle>
               <CardDescription className="mt-2">
                 Manage your organization's employee records
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
                 <DialogTrigger asChild>
-                  <Button onClick={openAddDialog} size="lg">
+                  <Button onClick={openAddDialog} size="lg" className="w-full sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" />
                     Add Employee
                   </Button>
@@ -561,6 +561,7 @@ export default function EmployeesClient({
                 onClick={() => setCsvDialogOpen(true)}
                 size="lg"
                 variant="outline"
+                className="w-full sm:w-auto"
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Upload CSV

@@ -184,29 +184,30 @@ export default function VersionsClient({
     <div className="container mx-auto py-8 px-4">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Plan Version History</CardTitle>
-            <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="groupByGeneration"
-                checked={groupByGeneration}
-                onChange={(e) => setGroupByGeneration(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              <label
-                htmlFor="groupByGeneration"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Group by generation
-              </label>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <CardTitle className="text-xl sm:text-2xl">Plan Version History</CardTitle>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="groupByGeneration"
+                  checked={groupByGeneration}
+                  onChange={(e) => setGroupByGeneration(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label
+                  htmlFor="groupByGeneration"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Group by generation
+                </label>
               </div>
               <Button
                 onClick={exportToExcel}
                 variant="outline"
                 size="sm"
                 disabled={versions.length === 0}
+                className="w-full sm:w-auto"
               >
                 <Download className="h-4 w-4 mr-2" />
                 Export to Excel

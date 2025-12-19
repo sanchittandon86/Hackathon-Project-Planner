@@ -791,12 +791,12 @@ export default function PlannerClient({
       )}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
-              <CardTitle>Smart Project Planner</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl">Smart Project Planner</CardTitle>
               <HowItWorksModal />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="excludeCompleted"
@@ -809,13 +809,14 @@ export default function PlannerClient({
                 >
                   Exclude completed tasks
                 </Label>
-            </div>
-            <Button
-              onClick={handleGeneratePlan}
-              disabled={generating || isPending}
-            >
-              {generating ? "Generating..." : "Generate Plan"}
-            </Button>
+              </div>
+              <Button
+                onClick={handleGeneratePlan}
+                disabled={generating || isPending}
+                className="w-full sm:w-auto"
+              >
+                {generating ? "Generating..." : "Generate Plan"}
+              </Button>
             </div>
           </div>
         </CardHeader>
