@@ -65,7 +65,7 @@ export async function addTask(
       }
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { error } = await supabase
       .from("tasks")
@@ -146,7 +146,7 @@ export async function updateTask(
       }
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { error } = await supabase
       .from("tasks")
@@ -184,7 +184,7 @@ export async function updateTask(
 export async function deleteTask(id: number): Promise<ActionResult> {
   console.log("[TASKS:ACTION] deleteTask called", { id });
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { error } = await supabase
       .from("tasks")
@@ -235,7 +235,7 @@ export async function bulkImportTasks(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // Prepare data with timestamps
     const tasksWithTimestamp = tasks.map((task) => ({

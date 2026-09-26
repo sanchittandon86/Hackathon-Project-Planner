@@ -36,7 +36,7 @@ export type RecalculationStatus = {
  */
 export async function fetchPlans(): Promise<PlanWithDetails[]> {
   console.log("[PLANNER:BE] fetchPlans - Fetching plans with details");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   // Fetch plans with joined task and employee data
   const { data: plansData, error: plansError } = await supabase
@@ -94,7 +94,7 @@ export async function fetchPlans(): Promise<PlanWithDetails[]> {
  */
 export async function checkRecalculationNeeded(): Promise<RecalculationStatus> {
   console.log("[PLANNER:BE] checkRecalculationNeeded - Checking if recalculation is needed");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   try {
     // Get max last_updated from master data tables

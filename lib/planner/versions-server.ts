@@ -45,7 +45,7 @@ export type PlanVersionWithDetails = PlanVersion & {
  */
 export async function fetchPlanVersions(): Promise<PlanVersionWithDetails[]> {
   console.log("[VERSIONS:BE] fetchPlanVersions - Fetching plan versions");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   try {
     // Fetch all plan versions, ordered by generation timestamp (newest first), then by id

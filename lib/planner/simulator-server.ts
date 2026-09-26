@@ -24,7 +24,7 @@ export type Employee = {
  * Fetch all tasks for simulator
  */
 export async function fetchTasksForSimulator(): Promise<Task[]> {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("tasks")
@@ -49,7 +49,7 @@ export async function fetchTasksForSimulator(): Promise<Task[]> {
  * Fetch all active employees for simulator
  */
 export async function fetchEmployeesForSimulator(): Promise<Employee[]> {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("employees")

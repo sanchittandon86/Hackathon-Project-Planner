@@ -44,7 +44,7 @@ export async function markPlanCompleted(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // First, fetch the plan with task details to get due_date
     console.log("[PLANNER:BE] markPlanCompleted - Fetching plan with task details", { planId });

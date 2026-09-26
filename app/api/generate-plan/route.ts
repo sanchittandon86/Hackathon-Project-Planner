@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 export async function POST(request: Request) {
   console.log("[PLANNER:BE] POST /api/generate-plan - Plan generation requested");
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     const body = await request.json().catch(() => ({}));
     const { simulatedPlans, excludeCompleted } = body;
 

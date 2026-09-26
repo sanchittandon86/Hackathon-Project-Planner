@@ -12,7 +12,7 @@ import type { Task } from "@/types/database";
  */
 export async function fetchTasks(): Promise<Task[]> {
   console.log("[TASKS:FETCH] Starting fetchTasks()");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("tasks")

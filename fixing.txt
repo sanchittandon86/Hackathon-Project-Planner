@@ -109,42 +109,75 @@ PRIORITY 1 — CAN CAUSE REAL DATA LOSS  [FIXED 2026-09-26]
              does not address that broader gap.
 
 
-PRIORITY 2 — SECURITY (fix before any real/public deployment)
+PRIORITY 2 — SECURITY  [FIXED 2026-09-27]
 -------------------------------------------------------------------
-4. No authentication at all
-   Problem : lib/supabase/server.ts and lib/supabaseClient.ts both use the
-             public anon key with no login/session system. No /login or
-             /signup pages exist, no middleware.ts exists. Anyone who has
-             the anon key (which is public in the client bundle by design)
-             has full read/write access to every table.
-   Fix     : Add Supabase Auth (email/password or OAuth) + enable Row Level
-             Security (RLS) policies in Supabase, or put this behind a
-             simple auth gate if it's only for internal/hackathon use.
+4. No authentication at all  [FIXED]
+   Problem : lib/supabase/server.ts and lib/supabaseClient.ts both used the
+             public anon key with no login/session system. No /login page,
+             no middleware.ts. Anyone with the anon key (public in the
+             client bundle by design) had full read/write access to every
+             table via the Supabase REST API directly.
+   Fix applied : Chose "simple shared login" (matches the existing
+             single-tenant data model - no per-user ownership, everyone who
+             logs in sees the same shared data):
+               - Migrated lib/supabase/server.ts and added lib/supabase/
+                 client.ts to use @supabase/ssr (cookie-based sessions)
+                 instead of a plain stateless anon-key client. Removed the
+                 deprecated unused @supabase/auth-helpers-nextjs dependency
+                 (also closes old item #7) in favor of @supabase/ssr.
+               - Added middleware.ts + lib/supabase/middleware.ts:
+                 redirects any unauthenticated request to /login (preserving
+                 the originally-requested path to return to after login).
+               - Added app/login/ (page + LoginForm + server actions for
+                 login/logout), no signup page - accounts are provisioned
+                 directly in the Supabase Dashboard.
+               - Added a "Log out" button to the sidebar.
+               - Deleted app/api/complete-plan/route.ts and app/api/
+                 plan-versions/route.ts: both were dead code (confirmed via
+                 grep - nothing calls them), both used the old stateless
+                 anon client, and both would have silently broken once RLS
+                 was restricted below. Also closes old item #6.
+               - Ran migration_restrict_rls_to_authenticated.sql against the
+                 live DB, changing all 22 RLS policies from
+                 "anon, authenticated" down to "authenticated" only. This is
+                 the step that makes the login screen actually enforce
+                 access control rather than being cosmetic.
+   Verified live : Logged in through the real browser with a Supabase Auth
+             account, confirmed all pages load real data through the
+             authenticated session. Then confirmed the raw anon key can no
+             longer read anything at all (tested tasks + employees directly
+             against the Supabase REST API - both now return empty/blocked).
+             Unauthenticated requests to any app route correctly redirect
+             to /login.
 
-5. No error boundaries or 404/loading pages
-   Problem : No app/error.tsx, no app/not-found.tsx, no loading.tsx
-             anywhere in the app/ folder. An unhandled exception shows the
-             raw Next.js crash screen instead of a graceful message.
-   Fix     : Add a basic app/error.tsx and app/not-found.tsx (15-30 min of
-             work each, purely cosmetic/safety net).
+5. No error boundaries or 404/loading pages  [FIXED]
+   Problem : No app/error.tsx, no app/not-found.tsx anywhere in the app/
+             folder. An unhandled exception showed the raw Next.js crash
+             screen instead of a graceful message.
+   Fix applied : Added app/not-found.tsx, app/error.tsx, and
+             app/global-error.tsx (covers errors thrown from the root
+             layout itself, which app/error.tsx can't catch), styled to
+             match the existing shadcn/Tailwind design system. Verified
+             live: hitting an unknown route now returns a proper 404 page
+             instead of Next's default screen; existing routes unaffected.
 
 
 PRIORITY 3 — CODE QUALITY / CLEANUP (safe to batch later)
 ----------------------------------------------------------------
-6. Dead/duplicate API route
-   File    : app/api/complete-plan/route.ts
-   Problem : Looks superseded by the markPlanCompleted() Server Action in
-             app/planner/actions.ts, but still exists and uses the raw
-             lib/supabaseClient.ts (bypassing the server-side helper).
-   Fix     : Delete the file if nothing still calls it.
+6. Dead/duplicate API routes  [FIXED — resolved while doing item #4]
+   Files   : app/api/complete-plan/route.ts, app/api/plan-versions/route.ts
+   Problem : Both were superseded by existing Server Actions / server-side
+             lib functions, both confirmed via grep to have zero callers,
+             and both used the raw stateless anon-key client.
+   Fix applied : Deleted both files (would have silently broken anyway once
+             RLS was restricted to authenticated-only in item #4).
 
-7. Deprecated, unused dependency
-   Problem : "@supabase/auth-helpers-nextjs" is installed (in package.json
-             and package-lock.json) but never imported anywhere in the
-             code. npm itself flags this package as deprecated — Supabase's
-             own guidance is to use "@supabase/ssr" instead.
-   Fix     : Remove it (`npm uninstall @supabase/auth-helpers-nextjs`)
-             unless you're actively about to build auth with it.
+7. Deprecated, unused dependency  [FIXED — resolved while doing item #4]
+   Problem : "@supabase/auth-helpers-nextjs" was installed but never
+             imported anywhere. npm flags it deprecated — Supabase's own
+             guidance is to use "@supabase/ssr" instead.
+   Fix applied : Removed it and installed "@supabase/ssr" instead, which is
+             now actively used for real cookie-based auth (see item #4).
 
 8. ESLint: 97 errors / 14 warnings (once run on Node 20)
    Problem : Mostly cosmetic/type-safety issues:
@@ -185,20 +218,27 @@ PRIORITY 4 — HOUSEKEEPING (uncommitted files sitting in your working tree)
 SUMMARY
 -------
 - Item #1 (Node version) still blocks everything locally — fix that first.
-- Items #2, #3, #2b, and #2c (all Priority 1) are FIXED as of 2026-09-26,
-  code changes committed to lib/planningEngine.ts + two new migrations run
-  against your live Supabase DB (migration_fix_plan_versions_history.sql,
-  migration_fix_missing_rls_policies.sql). All verified live: plans no
-  longer accumulate duplicates, completed plans can't be destroyed, version
-  history persists across regenerations, and leaves/task edits/employee
-  deletes/plan completion all actually write to the database now instead
-  of silently no-op'ing.
-- Item #4 (no authentication) is now MORE relevant, not less: the RLS
-  policies added in #2c are deliberately wide open (anon + authenticated,
-  no ownership checks) to match how the app already behaved on the tables
-  that did work. That's fine for a private/hackathon tool, but it means
-  literally anyone with the anon key (which ships in your client bundle)
-  has full read/write on every table. Don't deploy this publicly without
-  adding real auth first.
-- Items #5, #6-#11 are unchanged from before — cosmetic/cleanup, safe to
-  do whenever.
+- Priority 1 (items #2, #3, #2b, #2c) FIXED 2026-09-26 — see that section.
+- Priority 2 (items #4, #5) FIXED 2026-09-27:
+  - The app now requires login (Supabase Auth, cookie-based session via
+    @supabase/ssr). Unauthenticated requests redirect to /login.
+  - The database itself now enforces this too: all RLS policies were
+    restricted from "anon, authenticated" to "authenticated" only
+    (migration_restrict_rls_to_authenticated.sql), so the anon key alone
+    can no longer read or write anything, even by hitting Supabase
+    directly. Verified live in both directions.
+  - Accounts are provisioned manually in the Supabase Dashboard (no
+    signup page) — this is a "few known users, shared data" model, not
+    per-user data ownership. If you ever need real multi-tenant
+    permissions, that's a bigger schema change (add user_id columns,
+    per-row RLS) that wasn't in scope here.
+  - Old items #6 (dead API routes) and #7 (deprecated dependency) got
+    resolved as a natural side effect of this work.
+  - app/error.tsx, app/global-error.tsx, and app/not-found.tsx now give a
+    proper fallback UI instead of Next's default crash screen.
+- Remaining: item #8 (ESLint cleanup) and #9 (minor useEffect setState
+  bug) are cosmetic, safe to do whenever. Items #10-#11 (schema.sql /
+  package-lock.json housekeeping) — schema.sql is now committed as part of
+  the Priority 1 fix branch; package-lock.json changes from this session
+  (removing auth-helpers-nextjs, adding @supabase/ssr) are included in the
+  Priority 2 commit.

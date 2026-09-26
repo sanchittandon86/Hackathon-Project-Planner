@@ -10,7 +10,7 @@ import type { DashboardAnalytics } from "@/types/dashboard";
 import { formatDateLocal } from "@/lib/utils";
 
 export async function fetchDashboardAnalytics(): Promise<DashboardAnalytics> {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   // Calculate date ranges for leaves query
   const today = new Date();

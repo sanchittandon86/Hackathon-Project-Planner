@@ -12,7 +12,7 @@ import type { Employee } from "@/types/database";
  */
 export async function fetchEmployees(): Promise<Employee[]> {
   console.log("[EMPLOYEES:FETCH] Starting fetchEmployees()");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("employees")

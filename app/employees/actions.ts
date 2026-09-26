@@ -33,7 +33,7 @@ export async function addEmployee(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { error } = await supabase
       .from("employees")
@@ -82,7 +82,7 @@ export async function updateEmployee(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { error } = await supabase
       .from("employees")
@@ -120,7 +120,7 @@ export async function updateEmployee(
 export async function deleteEmployee(id: number): Promise<ActionResult> {
   console.log("[EMPLOYEES:ACTION] deleteEmployee called", { id });
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // First, delete all plans associated with this employee
     console.log("[EMPLOYEES:ACTION] deleteEmployee - Deleting associated plans");
@@ -203,7 +203,7 @@ export async function bulkImportEmployees(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // Prepare data with timestamps
     const employeesWithTimestamp = employees.map((emp) => ({

@@ -27,7 +27,7 @@ export type LeaveWithEmployee = Leave & {
  */
 export async function fetchEmployees(): Promise<Employee[]> {
   console.log("[LEAVES:FETCH] Starting fetchEmployees()");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("employees")
@@ -53,7 +53,7 @@ export async function fetchEmployees(): Promise<Employee[]> {
  */
 export async function fetchLeaves(): Promise<LeaveWithEmployee[]> {
   console.log("[LEAVES:FETCH] Starting fetchLeaves()");
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   // Fetch leaves with employee names using join
   const { data, error } = await supabase
