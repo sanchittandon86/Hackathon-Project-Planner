@@ -9,18 +9,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Planner Page
- * 
+ *
  * This page fetches plan data with joins on the server and passes it to
  * the client component for interactive UI. No Supabase client code
  * is shipped to the browser.
  */
-export default async function PlannerPage() {
-  // Fetch plans and recalculation status in parallel
-  const [plans, recalculationStatus] = await Promise.all([
-    fetchPlans(),
-    checkRecalculationNeeded(),
-  ]);
-
+export default function PlannerPage() {
   return (
     <Suspense
       fallback={
@@ -42,10 +36,21 @@ export default async function PlannerPage() {
         </div>
       }
     >
-      <PlannerClient
-        initialPlans={plans}
-        initialRecalculationStatus={recalculationStatus}
-      />
+      <PlannerContent />
     </Suspense>
+  );
+}
+
+async function PlannerContent() {
+  const [plans, recalculationStatus] = await Promise.all([
+    fetchPlans(),
+    checkRecalculationNeeded(),
+  ]);
+
+  return (
+    <PlannerClient
+      initialPlans={plans}
+      initialRecalculationStatus={recalculationStatus}
+    />
   );
 }

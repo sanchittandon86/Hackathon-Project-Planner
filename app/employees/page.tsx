@@ -14,17 +14,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Employees Page
- * 
+ *
  * This page fetches employee data on the server and passes it to
  * the client component for interactive UI. No Supabase client code
  * is shipped to the browser.
  */
-export default async function EmployeesPage() {
-  // Fetch employees data on the server
-  console.log("[EMPLOYEES:BE] Page load - Fetching employees data");
-  const employees = await fetchEmployees();
-  console.log(`[EMPLOYEES:BE] Page load - Fetched ${employees.length} employees`);
-
+export default function EmployeesPage() {
   return (
     <Suspense
       fallback={
@@ -60,7 +55,15 @@ export default async function EmployeesPage() {
         </div>
       }
     >
-      <EmployeesClient initialEmployees={employees} />
+      <EmployeesContent />
     </Suspense>
   );
+}
+
+async function EmployeesContent() {
+  console.log("[EMPLOYEES:BE] Page load - Fetching employees data");
+  const employees = await fetchEmployees();
+  console.log(`[EMPLOYEES:BE] Page load - Fetched ${employees.length} employees`);
+
+  return <EmployeesClient initialEmployees={employees} />;
 }

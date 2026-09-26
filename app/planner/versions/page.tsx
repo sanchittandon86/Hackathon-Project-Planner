@@ -9,15 +9,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Plan Versions Page
- * 
+ *
  * This page fetches plan versions data on the server and passes it to
  * the client component for display. No Supabase client code
  * is shipped to the browser.
  */
-export default async function PlanVersionsPage() {
-  // Fetch plan versions data on the server
-  const versions = await fetchPlanVersions();
-
+export default function PlanVersionsPage() {
   return (
     <Suspense
       fallback={
@@ -39,7 +36,13 @@ export default async function PlanVersionsPage() {
         </div>
       }
     >
-      <VersionsClient initialVersions={versions} />
+      <VersionsContent />
     </Suspense>
   );
+}
+
+async function VersionsContent() {
+  const versions = await fetchPlanVersions();
+
+  return <VersionsClient initialVersions={versions} />;
 }

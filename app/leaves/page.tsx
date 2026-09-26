@@ -8,20 +8,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Leaves Page
- * 
+ *
  * This page fetches leave and employee data on the server and passes it to
  * the client component for interactive UI. No Supabase client code
  * is shipped to the browser.
  */
-export default async function LeavesPage() {
-  // Fetch both employees and leaves data on the server in parallel
-  console.log("[LEAVES:BE] Page load - Fetching employees and leaves data");
-  const [employees, leaves] = await Promise.all([
-    fetchEmployees(),
-    fetchLeaves(),
-  ]);
-  console.log(`[LEAVES:BE] Page load - Fetched ${employees.length} employees and ${leaves.length} leaves`);
-
+export default function LeavesPage() {
   return (
     <Suspense
       fallback={
@@ -56,7 +48,18 @@ export default async function LeavesPage() {
         </div>
       }
     >
-      <LeavesClient initialEmployees={employees} initialLeaves={leaves} />
+      <LeavesContent />
     </Suspense>
   );
+}
+
+async function LeavesContent() {
+  console.log("[LEAVES:BE] Page load - Fetching employees and leaves data");
+  const [employees, leaves] = await Promise.all([
+    fetchEmployees(),
+    fetchLeaves(),
+  ]);
+  console.log(`[LEAVES:BE] Page load - Fetched ${employees.length} employees and ${leaves.length} leaves`);
+
+  return <LeavesClient initialEmployees={employees} initialLeaves={leaves} />;
 }
