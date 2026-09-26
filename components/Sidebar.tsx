@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { logout } from "@/app/login/actions";
 import {
   Home,
   Users,
@@ -13,6 +14,7 @@ import {
   History,
   Menu,
   FlaskConical,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,6 +93,20 @@ function NavigationContent({ onLinkClick }: { onLinkClick?: () => void }) {
   );
 }
 
+function LogoutButton() {
+  return (
+    <form action={logout} className="border-t px-3 py-4">
+      <button
+        type="submit"
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+      >
+        <LogOut className="h-5 w-5" />
+        <span>Log out</span>
+      </button>
+    </form>
+  );
+}
+
 export function Sidebar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -108,6 +124,7 @@ export function Sidebar() {
           </div>
 
           <NavigationContent />
+          <LogoutButton />
         </div>
       </aside>
 
@@ -134,6 +151,7 @@ export function Sidebar() {
               </div>
 
               <NavigationContent onLinkClick={() => setMobileMenuOpen(false)} />
+              <LogoutButton />
             </div>
           </SheetContent>
         </Sheet>

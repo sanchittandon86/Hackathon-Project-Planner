@@ -52,7 +52,7 @@ export async function addLeave(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // Check for duplicate leave (same employee, same date)
     console.log("[LEAVES:ACTION] addLeave - Checking for duplicate leave");
@@ -124,7 +124,7 @@ export async function deleteLeave(id: number): Promise<ActionResult> {
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // First, fetch the leave to get the employee_id before deleting
     const { data: leaveData, error: fetchError } = await supabase

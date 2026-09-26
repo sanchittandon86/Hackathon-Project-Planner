@@ -26,7 +26,7 @@ export async function runPlanSimulation(
   options: SimulationOptions
 ): Promise<ActionResult<PlanResult[]>> {
   try {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     const plans = await generatePlanSimulation(supabase, options);
     
     return {
@@ -72,7 +72,7 @@ export async function applySimulation(
       };
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     // Generate a unique generation ID for this plan generation run
     const generationId = crypto.randomUUID();
