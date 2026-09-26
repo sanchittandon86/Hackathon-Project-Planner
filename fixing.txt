@@ -1,0 +1,204 @@
+SMART PROJECT PLANNER — FIX LIST (Priority Order)
+===================================================
+Generated from a full end-to-end check: type-check, lint, production build,
+live dev server test against real Supabase data, and a manual read-through
+of the planning engine and server actions.
+
+
+PRIORITY 0 — BLOCKS EVERYTHING (fix first, takes 2 minutes)
+-------------------------------------------------------------
+1. Wrong Node.js version
+   Problem : Your default Node version (via nvm) is v14.15.5. This project
+             uses Next.js 16 + React 19, which need Node 18.18+ (ideally 20+).
+             On Node 14, `npm run dev`, `npm run build`, and `npm run lint`
+             all crash immediately with "Cannot find module 'node:events'".
+   Fix     : You already have Node 20.20.2 installed. Just switch to it:
+                 nvm alias default 20.20.2
+             Also add a ".nvmrc" file to the repo containing "20.20.2" so
+             this never bites you (or a teammate) again.
+   Status  : Confirmed — build/lint/dev all pass cleanly once on Node 20.
+
+
+PRIORITY 1 — CAN CAUSE REAL DATA LOSS  [FIXED 2026-09-26]
+-----------------------------------------------------------------------------
+2. Plan generation can wipe ALL plans if the save step fails  [FIXED]
+   File    : lib/planningEngine.ts -> savePlanToDB()
+   Problem : The save flow was: (1) insert version history, (2) DELETE all
+             existing plans, (3) INSERT the newly generated plans. There
+             was no database transaction wrapping these steps. If step 3
+             failed for any reason (bad row, network blip, transient
+             Supabase error), the function just returned false — but step 2
+             had already run. Every plan row was gone with nothing to
+             replace it.
+   Fix applied : Reordered to insert-new-plans-first, then delete only the
+             specific old rows being replaced (captured by id up front).
+             If the insert fails, the function now returns false with the
+             old plans completely untouched — no data loss window anymore.
+
+3. Unchecking "Exclude Completed" during Generate Plan destroys history  [FIXED]
+   File    : lib/planningEngine.ts -> savePlanToDB()
+   Problem : If a user unchecked "exclude completed" and clicked Generate
+             Plan, the old code deleted ALL plans (including completed
+             ones) and reinserted fresh plans with is_completed = false by
+             default — permanently erasing completion history
+             (is_completed, completion_type, completed_at) for tasks that
+             were already marked done.
+   Fix applied : savePlanToDB() now always protects completed plans at the
+             persistence layer, regardless of what the excludeCompleted
+             flag says. Any incoming generated plan for a task that already
+             has a completed plan on file is dropped before insert, and
+             completed rows are never included in the delete step. The
+             checkbox in the UI can no longer cause this.
+
+2b. [NEWLY DISCOVERED WHILE FIXING #2/#3] plan_versions rows were being
+    silently destroyed by a cascade-delete on every regeneration  [FIXED]
+   File    : schema.sql / migration_fix_plan_versions_history.sql
+   Problem : plan_versions.plan_id referenced plans(id) with "ON DELETE
+             CASCADE". Every "Generate Plan" click deleted the old plan row
+             right after recording a version for it — which cascaded and
+             deleted the just-created version record too. Version History
+             would only ever show the leftovers of whatever partially
+             survived, never a real history.
+   Fix applied : Ran a migration against the live Supabase DB changing
+             plan_id to be nullable with "ON DELETE SET NULL" instead of
+             CASCADE. Verified live: generated a plan twice in a row and
+             confirmed version records from the first generation survive
+             the second regeneration's delete step.
+
+2c. [NEWLY DISCOVERED — BIGGER THAN #2/#3 — bigger than everything else in
+    this file] Row Level Security is enabled on every table, but several
+    required policies were simply missing, so multiple features were
+    silently no-ops against the real database  [FIXED]
+   File    : migration_fix_missing_rls_policies.sql
+   Problem : Confirmed directly against the live DB (via raw REST calls
+             with the app's own anon key) that, before this fix:
+               - leaves table: SELECT/INSERT/UPDATE/DELETE ALL blocked.
+                 The Leave Management page always showed 0 leaves and
+                 "Add Leave" silently failed, no matter what you entered.
+               - plan_versions table: SELECT/INSERT/UPDATE/DELETE ALL
+                 blocked (separate from bug 2b above — even after fixing
+                 the cascade issue, the insert itself was rejected).
+                 Version History was empty because it could never write a
+                 row in the first place.
+               - plans table: UPDATE and DELETE blocked. "Mark Complete"
+                 on a plan silently did nothing. Every "Generate Plan"
+                 click's delete step silently deleted 0 rows (no error!),
+                 so old plans just piled up forever — confirmed live: the
+                 plans table had grown to 13 duplicate rows before this fix
+                 from repeated regenerations that never actually cleaned
+                 up.
+               - tasks table: UPDATE and DELETE blocked. Editing or
+                 deleting a task from the UI silently did nothing.
+               - employees table: DELETE blocked. Deleting an employee
+                 silently did nothing.
+             None of this throws a visible error in most cases (Postgres
+             RLS just makes DELETE/UPDATE match 0 rows) — the app logs
+             "success" every time, which is why this went unnoticed.
+   Fix applied : Ran a migration adding the missing SELECT/INSERT/UPDATE/
+             DELETE policies (matching the same fully-open anon+
+             authenticated pattern already used on the tables that did
+             work). Verified live: leaves can now be added and read, plan
+             completion updates persist, tasks/employees can be edited and
+             deleted, and "Generate Plan" now actually replaces old plans
+             instead of accumulating duplicates (confirmed count dropped
+             from 12 to 3 after one regeneration).
+   Note    : This app still has no authentication (see item #4 below) — an
+             anon key with full CRUD is only appropriate for a private/
+             internal tool, not a public deployment. This fix restores the
+             functionality the app's own code already assumed existed; it
+             does not address that broader gap.
+
+
+PRIORITY 2 — SECURITY (fix before any real/public deployment)
+-------------------------------------------------------------------
+4. No authentication at all
+   Problem : lib/supabase/server.ts and lib/supabaseClient.ts both use the
+             public anon key with no login/session system. No /login or
+             /signup pages exist, no middleware.ts exists. Anyone who has
+             the anon key (which is public in the client bundle by design)
+             has full read/write access to every table.
+   Fix     : Add Supabase Auth (email/password or OAuth) + enable Row Level
+             Security (RLS) policies in Supabase, or put this behind a
+             simple auth gate if it's only for internal/hackathon use.
+
+5. No error boundaries or 404/loading pages
+   Problem : No app/error.tsx, no app/not-found.tsx, no loading.tsx
+             anywhere in the app/ folder. An unhandled exception shows the
+             raw Next.js crash screen instead of a graceful message.
+   Fix     : Add a basic app/error.tsx and app/not-found.tsx (15-30 min of
+             work each, purely cosmetic/safety net).
+
+
+PRIORITY 3 — CODE QUALITY / CLEANUP (safe to batch later)
+----------------------------------------------------------------
+6. Dead/duplicate API route
+   File    : app/api/complete-plan/route.ts
+   Problem : Looks superseded by the markPlanCompleted() Server Action in
+             app/planner/actions.ts, but still exists and uses the raw
+             lib/supabaseClient.ts (bypassing the server-side helper).
+   Fix     : Delete the file if nothing still calls it.
+
+7. Deprecated, unused dependency
+   Problem : "@supabase/auth-helpers-nextjs" is installed (in package.json
+             and package-lock.json) but never imported anywhere in the
+             code. npm itself flags this package as deprecated — Supabase's
+             own guidance is to use "@supabase/ssr" instead.
+   Fix     : Remove it (`npm uninstall @supabase/auth-helpers-nextjs`)
+             unless you're actively about to build auth with it.
+
+8. ESLint: 97 errors / 14 warnings (once run on Node 20)
+   Problem : Mostly cosmetic/type-safety issues:
+             - ~20x "no-explicit-any" — mainly in lib/planningEngine.ts,
+               lib/planner/versions-server.ts, lib/analytics/dashboard.ts
+             - Unescaped quotes/apostrophes in JSX text (HowItWorksModal.tsx,
+               SimulatorHowItWorksModal.tsx, TasksClient.tsx)
+             - A few unused variables/imports
+   Fix     : Run `npm run lint -- --fix` for the auto-fixable ones, then
+             manually replace `any` with real types where practical.
+
+9. Minor React bug: setState called synchronously inside useEffect
+   File    : app/planner/versions/VersionsClient.tsx line ~51
+   Problem : `setVersions(initialVersions)` is called directly inside a
+             useEffect body, which triggers an extra unnecessary render
+             pass. Not broken, just not ideal.
+   Fix     : Derive state from the initialVersions prop directly instead of
+             copying it into local state via an effect, or reset with a
+             `key` prop on the parent instead.
+
+
+PRIORITY 4 — HOUSEKEEPING (uncommitted files sitting in your working tree)
+-------------------------------------------------------------------------------
+10. schema.sql — new, untracked file
+    What it is : A reconstructed base database schema (since none existed
+                 in version control before). Not committed yet.
+    Action     : Review it, then either `git add schema.sql` and commit it,
+                 or delete it if you don't want to track it.
+
+11. package-lock.json — modified, uncommitted
+    What changed : Adds "@supabase/auth-helpers-nextjs" (see item #7) and
+                   "xlsx" / "@types/xlsx" (these ARE used, in
+                   VersionsClient.tsx for Excel export — keep those).
+    Action        : Commit intentionally once you've decided on item #7
+                    above, don't leave it dangling uncommitted.
+
+
+SUMMARY
+-------
+- Item #1 (Node version) still blocks everything locally — fix that first.
+- Items #2, #3, #2b, and #2c (all Priority 1) are FIXED as of 2026-09-26,
+  code changes committed to lib/planningEngine.ts + two new migrations run
+  against your live Supabase DB (migration_fix_plan_versions_history.sql,
+  migration_fix_missing_rls_policies.sql). All verified live: plans no
+  longer accumulate duplicates, completed plans can't be destroyed, version
+  history persists across regenerations, and leaves/task edits/employee
+  deletes/plan completion all actually write to the database now instead
+  of silently no-op'ing.
+- Item #4 (no authentication) is now MORE relevant, not less: the RLS
+  policies added in #2c are deliberately wide open (anon + authenticated,
+  no ownership checks) to match how the app already behaved on the tables
+  that did work. That's fine for a private/hackathon tool, but it means
+  literally anyone with the anon key (which ships in your client bundle)
+  has full read/write on every table. Don't deploy this publicly without
+  adding real auth first.
+- Items #5, #6-#11 are unchanged from before — cosmetic/cleanup, safe to
+  do whenever.

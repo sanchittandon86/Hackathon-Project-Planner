@@ -455,10 +455,37 @@ export async function savePlanToDB(
       });
     }
 
+    // Completed plans are historical records, not schedules to re-optimize.
+    // Protect them from deletion/overwrite here regardless of the
+    // excludeCompleted flag, so unchecking that box in the UI can no longer
+    // wipe completion history (is_completed/completion_type/completed_at).
+    const completedTaskIds: Set<string> = new Set(
+      (existingPlans || [])
+        .filter((p: any) => p.is_completed)
+        .map((p: any) => String(p.task_id))
+    );
+    const plansToInsert = plans.filter(
+      (p) => !completedTaskIds.has(String(p.task_id))
+    );
+
+    console.log("[PLANNER:BE] savePlanToDB - Protecting completed plans", {
+      completedTaskCount: completedTaskIds.size,
+      incomingPlanCount: plans.length,
+      plansToInsertCount: plansToInsert.length,
+    });
+
+    // Capture which specific old rows are being superseded *before* we
+    // insert anything. We delete these by id later (not by a blanket
+    // is_completed=false filter), since a blanket filter would also match
+    // and delete the freshly-inserted replacement rows.
+    const staleOldPlanIds: string[] = (existingPlans || [])
+      .filter((p: any) => !p.is_completed)
+      .map((p: any) => p.id);
+
     // Fetch employee and task details for version records
     // Include both new plan employees/tasks and existing plan employees/tasks
-    const newEmployeeIds = [...new Set(plans.map((p) => p.employee_id))];
-    const newTaskIds = [...new Set(plans.map((p) => p.task_id))];
+    const newEmployeeIds = [...new Set(plansToInsert.map((p) => p.employee_id))];
+    const newTaskIds = [...new Set(plansToInsert.map((p) => p.task_id))];
     
     const oldEmployeeIds = existingPlans 
       ? [...new Set(existingPlans.map((p: any) => p.employee_id))]
@@ -494,7 +521,7 @@ export async function savePlanToDB(
     // Debug: Log what we're comparing
     console.log("[PLANNER:BE] savePlanToDB - Version comparison", {
       existingPlanCount: existingPlans?.length || 0,
-      newPlanCount: plans.length,
+      newPlanCount: plansToInsert.length,
       generationId,
     });
 
@@ -517,7 +544,7 @@ export async function savePlanToDB(
     if (existingPlans && existingPlans.length > 0) {
       console.log("[PLANNER:BE] savePlanToDB - Comparing plans for version tracking", {
         existingPlanCount: existingPlans.length,
-        newPlanCount: plans.length,
+        newPlanCount: plansToInsert.length,
         generationId,
       });
       
@@ -541,7 +568,7 @@ export async function savePlanToDB(
       let newTasks = 0;
 
       // Compare with new plans
-      plans.forEach((newPlan) => {
+      plansToInsert.forEach((newPlan) => {
         const key = `${newPlan.task_id}-${newPlan.employee_id}`;
         const oldPlan = existingPlansMap.get(key);
         const oldTaskPlan = existingTasksMap.get(newPlan.task_id);
@@ -666,52 +693,16 @@ export async function savePlanToDB(
       });
     }
 
-    // 3. Delete old plans (excluding completed ones if excludeCompleted is true)
-    // NOTE: If plan_versions has "on delete cascade", versions will be deleted too
-    // Solution: Make plan_id nullable or change to "on delete set null"
-    console.log("[PLANNER:BE] savePlanToDB - Deleting old plans", {
-      excludeCompleted,
-      generationId,
-    });
-    
-    let deleteError;
-    if (excludeCompleted) {
-      // Only delete non-completed plans
-      const { error } = await supabase
-        .from("plans")
-        .delete()
-        .eq("is_completed", false);
-      deleteError = error;
-    } else {
-      // Delete all plans
-      const { error } = await supabase
-        .from("plans")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
-      deleteError = error;
-    }
-
-    if (deleteError) {
-      console.error("[PLANNER:BE] savePlanToDB - Error deleting old plans", {
-        error: deleteError.message,
-        excludeCompleted,
-        generationId,
-      });
-      // Continue anyway - might be first run or empty table
-    } else {
-      console.log("[PLANNER:BE] savePlanToDB - Old plans deleted successfully", {
-        excludeCompleted,
-        generationId,
-      });
-    }
-
-    // 4. Insert new plans
-    if (plans.length > 0) {
+    // 3. Insert new plans BEFORE deleting old ones. If this insert fails,
+    // we return early with the old plans still intact instead of leaving
+    // the table empty (previously the delete ran first, so any insert
+    // failure here wiped every plan with nothing to replace it).
+    if (plansToInsert.length > 0) {
       console.log("[PLANNER:BE] savePlanToDB - Inserting new plans", {
-        planCount: plans.length,
+        planCount: plansToInsert.length,
         generationId,
       });
-      const plansWithTimestamp = plans.map((plan) => ({
+      const plansWithTimestamp = plansToInsert.map((plan) => ({
         ...plan,
         last_updated: new Date().toISOString(),
       }));
@@ -722,19 +713,48 @@ export async function savePlanToDB(
       if (insertError) {
         console.error("[PLANNER:BE] savePlanToDB - Error inserting plans", {
           error: insertError.message,
-          planCount: plans.length,
+          planCount: plansToInsert.length,
           generationId,
         });
         return false;
       }
       console.log("[PLANNER:BE] savePlanToDB - Plans inserted successfully", {
-        planCount: plans.length,
+        planCount: plansToInsert.length,
+        generationId,
+      });
+    }
+
+    // 4. Now that the new plans are safely inserted, delete the specific
+    // stale non-completed rows captured in step 1 (by id, not by a blanket
+    // is_completed=false filter, which would also delete the rows we just
+    // inserted). Completed plans are never touched, so completion history
+    // can't be destroyed by a regeneration.
+    console.log("[PLANNER:BE] savePlanToDB - Deleting stale plans", {
+      staleCount: staleOldPlanIds.length,
+      generationId,
+    });
+
+    const { error: deleteError } =
+      staleOldPlanIds.length > 0
+        ? await supabase.from("plans").delete().in("id", staleOldPlanIds)
+        : { error: null };
+
+    if (deleteError) {
+      console.error("[PLANNER:BE] savePlanToDB - Error deleting stale plans", {
+        error: deleteError.message,
+        generationId,
+      });
+      // Not returning false here: the new plans are already safely inserted,
+      // so at worst this leaves stale duplicate rows to be cleaned up on the
+      // next generation rather than losing data.
+    } else {
+      console.log("[PLANNER:BE] savePlanToDB - Stale plans deleted successfully", {
         generationId,
       });
     }
 
     console.log("[PLANNER:BE] savePlanToDB - Success", {
-      planCount: plans.length,
+      planCount: plansToInsert.length,
       generationId,
     });
     return true;
