@@ -9,15 +9,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Dashboard Home Page
- * 
+ *
  * This page fetches all analytics data on the server and passes it to
  * client components for interactive charts. No Supabase client code
  * is shipped to the browser.
  */
-export default async function Home() {
-  // Fetch analytics data on the server
-  const analytics = await fetchDashboardAnalytics();
-
+export default function Home() {
   return (
     <div className="container mx-auto py-2 px-4">
       {/* Page Header */}
@@ -30,12 +27,22 @@ export default async function Home() {
 
       {/* Analytics Section */}
       <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardStats data={analytics} />
-        <DashboardCharts data={analytics} />
+        <DashboardAnalytics />
       </Suspense>
 
       {/* Grid Layout of Feature Cards */}
       <DashboardCards />
     </div>
+  );
+}
+
+async function DashboardAnalytics() {
+  const analytics = await fetchDashboardAnalytics();
+
+  return (
+    <>
+      <DashboardStats data={analytics} />
+      <DashboardCharts data={analytics} />
+    </>
   );
 }

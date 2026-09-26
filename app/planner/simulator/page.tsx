@@ -18,18 +18,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Simulator Page
- * 
+ *
  * This page fetches task and employee data on the server and passes it to
  * the client component for simulation. No Supabase client code
  * is shipped to the browser.
  */
-export default async function SimulatorPage() {
-  // Fetch tasks and employees data on the server in parallel
-  const [tasks, employees] = await Promise.all([
-    fetchTasksForSimulator(),
-    fetchEmployeesForSimulator(),
-  ]);
-
+export default function SimulatorPage() {
   return (
     <Suspense
       fallback={
@@ -87,7 +81,16 @@ export default async function SimulatorPage() {
         </div>
       }
     >
-      <SimulatorClient initialTasks={tasks} initialEmployees={employees} />
+      <SimulatorContent />
     </Suspense>
   );
+}
+
+async function SimulatorContent() {
+  const [tasks, employees] = await Promise.all([
+    fetchTasksForSimulator(),
+    fetchEmployeesForSimulator(),
+  ]);
+
+  return <SimulatorClient initialTasks={tasks} initialEmployees={employees} />;
 }

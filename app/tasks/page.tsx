@@ -14,17 +14,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Server Component - Tasks Page
- * 
+ *
  * This page fetches task data on the server and passes it to
  * the client component for interactive UI. No Supabase client code
  * is shipped to the browser.
  */
-export default async function TasksPage() {
-  // Fetch tasks data on the server
-  console.log("[TASKS:BE] Page load - Fetching tasks data");
-  const tasks = await fetchTasks();
-  console.log(`[TASKS:BE] Page load - Fetched ${tasks.length} tasks`);
-
+export default function TasksPage() {
   return (
     <Suspense
       fallback={
@@ -60,7 +55,15 @@ export default async function TasksPage() {
         </div>
       }
     >
-      <TasksClient initialTasks={tasks} />
+      <TasksContent />
     </Suspense>
   );
+}
+
+async function TasksContent() {
+  console.log("[TASKS:BE] Page load - Fetching tasks data");
+  const tasks = await fetchTasks();
+  console.log(`[TASKS:BE] Page load - Fetched ${tasks.length} tasks`);
+
+  return <TasksClient initialTasks={tasks} />;
 }
