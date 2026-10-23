@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/utils";
 
 export type ActionResult<T = void> = {
   success: boolean;
@@ -68,7 +69,8 @@ export async function markPlanCompleted(
       };
     }
 
-    const taskDueDate = (planData.task as any)?.due_date || null;
+    const taskDueDate =
+      (planData.task as { due_date: string | null } | null)?.due_date || null;
     const endDate = getTodayLocal(); // Current date in local timezone (YYYY-MM-DD format)
     
     // Compare endDate (current date) with dueDate to determine completion type
@@ -136,14 +138,14 @@ export async function markPlanCompleted(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[PLANNER:BE] markPlanCompleted - Unexpected error", {
       planId,
-      error: error.message,
+      error: getErrorMessage(error),
     });
     return {
       success: false,
-      error: error.message || "Failed to mark plan as completed",
+      error: getErrorMessage(error) || "Failed to mark plan as completed",
     };
   }
 }

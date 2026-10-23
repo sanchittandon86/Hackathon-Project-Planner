@@ -8,8 +8,6 @@
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-type LogLevel = 'info' | 'debug' | 'warn' | 'error';
-
 interface Logger {
   info: (...args: unknown[]) => void;
   debug: (...args: unknown[]) => void;

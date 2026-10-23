@@ -58,18 +58,6 @@ type PlannerClientProps = {
   initialRecalculationStatus: RecalculationStatus;
 };
 
-type ClientGroup = {
-  client: string;
-  plans: PlanWithDetails[];
-};
-
-type SprintGroup = {
-  sprintNumber: number;
-  startDate: string;
-  endDate: string;
-  plans: PlanWithDetails[];
-};
-
 export default function PlannerClient({
   initialPlans,
   initialRecalculationStatus,
@@ -825,7 +813,7 @@ export default function PlannerClient({
             <TableSkeleton rows={6} columns={9} />
           ) : plans.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No plans generated yet. Click "Generate Plan" to create a schedule.
+              No plans generated yet. Click &quot;Generate Plan&quot; to create a schedule.
             </div>
           ) : (
             <div className="space-y-4">

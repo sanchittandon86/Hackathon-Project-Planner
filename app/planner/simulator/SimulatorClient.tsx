@@ -17,7 +17,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -530,7 +529,7 @@ export default function SimulatorClient({
             <CardHeader>
               <CardTitle className="text-blue-600">Simulation Results</CardTitle>
               <CardDescription>
-                This is a simulated plan. Click "Apply Changes" to make it real.
+                This is a simulated plan. Click &quot;Apply Changes&quot; to make it real.
               </CardDescription>
             </CardHeader>
             <CardContent>

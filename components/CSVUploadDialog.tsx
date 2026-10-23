@@ -63,7 +63,6 @@ export function CSVUploadDialog({
   const [parsingProgress, setParsingProgress] = useState(0);
   const [isParsing, setIsParsing] = useState(false);
   const [parsingStatus, setParsingStatus] = useState<"idle" | "parsing" | "uploading">("idle");
-  const [totalRows, setTotalRows] = useState(0);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -73,7 +72,6 @@ export function CSVUploadDialog({
     setIsParsing(true);
     setParsingStatus("parsing");
     setParsingProgress(0);
-    setTotalRows(0);
     setParsedData([]);
     setValidationErrors([]);
 
@@ -90,7 +88,7 @@ export function CSVUploadDialog({
       header: true,
       skipEmptyLines: true,
       worker: true, // Use web worker to avoid blocking UI thread
-      step: (result, parser) => {
+      step: (result) => {
         // Collect each row as it's parsed
         if (result.data) {
           parsedRows.push(result.data as CSVRow);
@@ -118,7 +116,6 @@ export function CSVUploadDialog({
 
         setParsingProgress(100);
         setIsParsing(false);
-        setTotalRows(rowCount);
 
         if (results?.errors && results.errors.length > 0) {
           toast.error("CSV parsing errors detected");
@@ -150,7 +147,6 @@ export function CSVUploadDialog({
     setIsParsing(true);
     setParsingStatus("parsing");
     setParsingProgress(0);
-    setTotalRows(0);
     setParsedData([]);
     setValidationErrors([]);
 
@@ -167,7 +163,7 @@ export function CSVUploadDialog({
       header: true,
       skipEmptyLines: true,
       worker: true, // Use web worker to avoid blocking UI thread
-      step: (result, parser) => {
+      step: (result) => {
         // Collect each row as it's parsed
         if (result.data) {
           parsedRows.push(result.data as CSVRow);
@@ -194,7 +190,6 @@ export function CSVUploadDialog({
 
         setParsingProgress(100);
         setIsParsing(false);
-        setTotalRows(rowCount);
 
         if (results?.errors && results.errors.length > 0) {
           toast.error("CSV parsing errors detected");
@@ -332,7 +327,6 @@ export function CSVUploadDialog({
     setParsingProgress(0);
     setIsParsing(false);
     setParsingStatus("idle");
-    setTotalRows(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }

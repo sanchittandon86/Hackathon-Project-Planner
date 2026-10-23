@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/utils";
 import type { EmployeeInsert } from "@/types/database";
 
 export type ActionResult<T = void> = {
@@ -56,7 +57,7 @@ export async function addEmployee(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[EMPLOYEES:ACTION] addEmployee - Unexpected error:", error);
     return {
       success: false,
@@ -105,7 +106,7 @@ export async function updateEmployee(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[EMPLOYEES:ACTION] updateEmployee - Unexpected error:", error);
     return {
       success: false,
@@ -174,7 +175,7 @@ export async function deleteEmployee(id: number): Promise<ActionResult> {
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[EMPLOYEES:ACTION] deleteEmployee - Unexpected error:", error);
     return {
       success: false,
@@ -286,9 +287,9 @@ export async function bulkImportEmployees(
         inserted: totalInserted,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[EMPLOYEES:BE] bulkImportEmployees - Unexpected error", {
-      error: error.message,
+      error: getErrorMessage(error),
     });
     return {
       success: false,

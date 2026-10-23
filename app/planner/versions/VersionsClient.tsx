@@ -14,7 +14,7 @@
  * All data is received as props from the Server Component.
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -38,18 +37,8 @@ type VersionsClientProps = {
 export default function VersionsClient({
   initialVersions,
 }: VersionsClientProps) {
-  const [versions, setVersions] = useState<PlanVersionWithDetails[]>(
-    initialVersions
-  );
+  const versions = initialVersions;
   const [groupByGeneration, setGroupByGeneration] = useState(true);
-
-  // Update local state when initial data changes (after refresh)
-  useEffect(() => {
-    console.log("[VERSIONS:FE] useEffect - Initial versions data updated", {
-      versionCount: initialVersions.length,
-    });
-    setVersions(initialVersions);
-  }, [initialVersions]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {

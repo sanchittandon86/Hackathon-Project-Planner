@@ -8,21 +8,6 @@ type Employee = {
   designation: string;
 };
 
-type Task = {
-  id: string;
-  title: string;
-  client: string;
-  effort_hours: number;
-  designation_required: string;
-  due_date?: string | null;
-};
-
-type Leave = {
-  id: string;
-  employee_id: string;
-  leave_date: string;
-};
-
 export type PlanResult = {
   task_id: string;
   employee_id: string;
@@ -46,25 +31,26 @@ export async function generatePlan(
     .from("tasks")
     .select("*");
 
+  const { data: existingPlans, error: plansError } = await supabase
+    .from("plans")
+    .select("*");
+
   // If excluding completed plans, fetch completed plan task IDs
   let completedTaskIds: Set<string> = new Set();
   if (excludeCompleted) {
-    const { data: completedPlans } = await supabase
-      .from("plans")
-      .select("task_id")
-      .eq("is_completed", true);
-    
-    if (completedPlans) {
-      completedTaskIds = new Set(completedPlans.map((p: any) => String(p.task_id)));
-    }
+    completedTaskIds = new Set(
+      (existingPlans || [])
+        .filter((p: any) => p.is_completed)
+        .map((p: any) => String(p.task_id))
+    );
   }
 
   const { data: leaves, error: leaveError } = await supabase
     .from("leaves")
     .select("*");
 
-  if (empError || taskError || leaveError) {
-    console.error("Error fetching data:", { empError, taskError, leaveError });
+  if (empError || taskError || leaveError || plansError) {
+    console.error("Error fetching data:", { empError, taskError, leaveError, plansError });
     return [];
   }
 
@@ -80,8 +66,11 @@ export async function generatePlan(
     return [];
   }
 
-  // Sort tasks by effort (smallest first for better distribution)
-  tasksToPlan.sort((a, b) => a.effort_hours - b.effort_hours);
+  const employeeById = new Map(employees.map((emp) => [emp.id, emp]));
+  const existingPlanByTaskId = new Map<string, any>();
+  (existingPlans || []).forEach((p: any) => {
+    existingPlanByTaskId.set(String(p.task_id), p);
+  });
 
   const plans: PlanResult[] = [];
   const employeeWorkload: Map<string, Date> = new Map(); // Track when each employee is next available
@@ -125,8 +114,71 @@ export async function generatePlan(
     });
   };
 
-  // 2. For each task, assign to the least loaded matching employee
+  // 2. Keep already-assigned tasks exactly as they are (same employee, same
+  // dates) so that adding/regenerating doesn't reshuffle unrelated tasks.
+  // A task is only re-scheduled if it has no existing assignment, or if
+  // something about it actually changed (effort hours, or the assigned
+  // employee's designation no longer matches what the task now requires).
+  const tasksNeedingSchedule: typeof tasksToPlan = [];
+
   for (const task of tasksToPlan) {
+    const existing = existingPlanByTaskId.get(String(task.id));
+    const assignedEmployee = existing ? employeeById.get(existing.employee_id) : undefined;
+
+    const unchanged =
+      existing &&
+      assignedEmployee &&
+      assignedEmployee.designation === task.designation_required &&
+      Number(existing.total_hours) === Number(task.effort_hours);
+
+    if (!unchanged) {
+      tasksNeedingSchedule.push(task);
+      continue;
+    }
+
+    // Recompute overdue status against the task's current due_date (it may
+    // have changed since the assignment was made), but keep the employee
+    // and dates untouched.
+    let is_overdue = false;
+    let days_overdue = 0;
+    if (task.due_date) {
+      const dueDate = new Date(task.due_date);
+      const calculatedEndDate = new Date(existing.end_date);
+      if (calculatedEndDate > dueDate) {
+        is_overdue = true;
+        const diffTime = calculatedEndDate.getTime() - dueDate.getTime();
+        days_overdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    plans.push({
+      task_id: task.id,
+      employee_id: existing.employee_id,
+      start_date: existing.start_date,
+      end_date: existing.end_date,
+      total_hours: task.effort_hours,
+      is_overdue,
+      days_overdue,
+    });
+
+    // Seed this employee's workload/availability so new tasks are scheduled
+    // around the work they're already committed to, instead of from zero.
+    workload[existing.employee_id] = (workload[existing.employee_id] || 0) + task.effort_hours;
+    const nextAvailableAfterKept = addDays(new Date(existing.end_date), 1);
+    const currentNext = employeeWorkload.get(existing.employee_id);
+    if (!currentNext || nextAvailableAfterKept > currentNext) {
+      employeeWorkload.set(existing.employee_id, nextAvailableAfterKept);
+    }
+  }
+
+  // Sort only the tasks that actually need (re)scheduling, smallest effort
+  // first, same fairness heuristic as before.
+  tasksNeedingSchedule.sort((a, b) => a.effort_hours - b.effort_hours);
+
+  // 3. For each task still needing scheduling, assign to the least loaded
+  // matching employee, continuing from each employee's already-committed
+  // workload/availability instead of resetting everyone to zero.
+  for (const task of tasksNeedingSchedule) {
     // Find employees with matching designation
     const candidates = employees.filter(
       (emp) => emp.designation === task.designation_required
@@ -148,7 +200,7 @@ export async function generatePlan(
 
     const earliestDate = getNextWorkday(selectedEmployee.id, nextAvailable);
 
-    // 3. Allocate task sequentially using 8 hours per day
+    // 4. Allocate task sequentially using 8 hours per day
     let remaining = task.effort_hours;
     let current = new Date(earliestDate);
     let startDate = "";

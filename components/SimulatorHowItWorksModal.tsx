@@ -72,7 +72,7 @@ export function SimulatorHowItWorksModal() {
                 <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
                   <li>Select a task from the dropdown</li>
                   <li>Enter the number of days to delay (e.g., 5 days)</li>
-                  <li>Click "Add Delay" to add it to your simulation</li>
+                  <li>Click &quot;Add Delay&quot; to add it to your simulation</li>
                   <li>You can add multiple task delays</li>
                 </ol>
               </div>
@@ -101,9 +101,9 @@ export function SimulatorHowItWorksModal() {
                 <p className="font-semibold text-sm mb-1">How To Use</p>
                 <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
                   <li>Select an employee from the dropdown</li>
-                  <li>Choose a "From" date (start of unavailability)</li>
-                  <li>Choose a "To" date (end of unavailability)</li>
-                  <li>Click "Add Block" to add it to your simulation</li>
+                  <li>Choose a &quot;From&quot; date (start of unavailability)</li>
+                  <li>Choose a &quot;To&quot; date (end of unavailability)</li>
+                  <li>Click &quot;Add Block&quot; to add it to your simulation</li>
                   <li>You can block multiple employees for different periods</li>
                 </ol>
               </div>
@@ -132,7 +132,7 @@ export function SimulatorHowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">Step 2: Run Simulation</p>
                 <p className="text-sm text-muted-foreground">
-                  Click the "Run Simulation" button. The system will recalculate the entire plan with your specified changes, 
+                  Click the &quot;Run Simulation&quot; button. The system will recalculate the entire plan with your specified changes,
                   showing you a preview of how the schedule would look.
                 </p>
               </div>
@@ -160,7 +160,7 @@ export function SimulatorHowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">When To Apply</p>
                 <p className="text-sm text-muted-foreground">
-                  After reviewing the simulation results, if you're satisfied with the changes, click "Apply Changes" to make them permanent.
+                  After reviewing the simulation results, if you&apos;re satisfied with the changes, click &quot;Apply Changes&quot; to make them permanent.
                 </p>
               </div>
               <div>
@@ -177,7 +177,7 @@ export function SimulatorHowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">Reset Option</p>
                 <p className="text-sm text-muted-foreground">
-                  Use the "Reset" button to clear all simulation scenarios and start over without affecting your real plan.
+                  Use the &quot;Reset&quot; button to clear all simulation scenarios and start over without affecting your real plan.
                 </p>
               </div>
             </CardContent>
@@ -195,7 +195,7 @@ export function SimulatorHowItWorksModal() {
                   <div>
                     <p className="text-sm font-semibold">Safe Testing Environment</p>
                     <p className="text-xs text-muted-foreground">
-                      Simulations don't modify your real plan until you explicitly apply changes.
+                      Simulations don&apos;t modify your real plan until you explicitly apply changes.
                     </p>
                   </div>
                 </div>

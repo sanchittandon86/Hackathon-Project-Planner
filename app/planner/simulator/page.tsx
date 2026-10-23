@@ -71,7 +71,7 @@ export default function SimulatorPage() {
             <CardHeader>
               <CardTitle className="text-blue-600">Simulation Results</CardTitle>
               <CardDescription>
-                This is a simulated plan. Click "Apply Changes" to make it real.
+                This is a simulated plan. Click &quot;Apply Changes&quot; to make it real.
               </CardDescription>
             </CardHeader>
             <CardContent>
