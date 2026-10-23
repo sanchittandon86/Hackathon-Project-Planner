@@ -36,7 +36,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { HowItWorksModal } from "@/components/HowItWorksModal";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
@@ -86,6 +86,9 @@ export default function PlannerClient({
   // employee now has freed-up capacity for their next task.
   const [completionNeedsRecalc, setCompletionNeedsRecalc] = useState(false);
   const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
+  const [completingPlanIds, setCompletingPlanIds] = useState<Set<number>>(
+    new Set()
+  );
   // Exclude completed tasks by default - preserves completed plans when regenerating
   const [excludeCompleted, setExcludeCompleted] = useState(true);
 
@@ -280,6 +283,7 @@ export default function PlannerClient({
       intent: "mark_completed_clicked",
     });
 
+    setCompletingPlanIds((prev) => new Set(prev).add(planId));
     try {
       const result = await markPlanCompleted(planId);
 
@@ -317,6 +321,12 @@ export default function PlannerClient({
         error,
       });
       toast.error("Failed to mark as completed");
+    } finally {
+      setCompletingPlanIds((prev) => {
+        const next = new Set(prev);
+        next.delete(planId);
+        return next;
+      });
     }
   };
 
@@ -330,6 +340,55 @@ export default function PlannerClient({
     startDate.setHours(0, 0, 0, 0);
 
     return startDate <= today;
+  };
+
+  // Renders the Mark Completed action cell, including a loading spinner
+  // while the request for this specific plan is in flight.
+  const renderMarkCompletedAction = (plan: PlanWithDetails) => {
+    const isCompleting = completingPlanIds.has(plan.id);
+
+    if (plan.is_completed) {
+      return (
+        <span className="text-sm text-muted-foreground">Completed</span>
+      );
+    }
+
+    if (canMarkCompleted(plan)) {
+      return (
+        <Button
+          size="sm"
+          onClick={() => markCompleted(plan.id)}
+          variant="outline"
+          disabled={isCompleting}
+        >
+          {isCompleting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Completing...
+            </>
+          ) : (
+            "Mark Completed"
+          )}
+        </Button>
+      );
+    }
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button size="sm" disabled variant="ghost">
+                Mark Completed
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Cannot complete before start date</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   };
 
   // Separate completed and active plans
@@ -533,34 +592,7 @@ export default function PlannerClient({
               <TableCell>{getStatusBadge(plan)}</TableCell>
               <TableCell>{plan.total_hours}</TableCell>
               <TableCell>
-                {canMarkCompleted(plan) ? (
-                  <Button
-                    size="sm"
-                    onClick={() => markCompleted(plan.id)}
-                    variant="outline"
-                  >
-                    Mark Completed
-                  </Button>
-                ) : plan.is_completed ? (
-                  <span className="text-sm text-muted-foreground">
-                    Completed
-                  </span>
-                ) : (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button size="sm" disabled variant="ghost">
-                            Mark Completed
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Cannot complete before start date</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                {renderMarkCompletedAction(plan)}
               </TableCell>
             </TableRow>
           ))}
@@ -637,34 +669,7 @@ export default function PlannerClient({
                       <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
                       <TableCell>
-                        {canMarkCompleted(plan) ? (
-                          <Button
-                            size="sm"
-                            onClick={() => markCompleted(plan.id)}
-                            variant="outline"
-                          >
-                            Mark Completed
-                          </Button>
-                        ) : plan.is_completed ? (
-                          <span className="text-sm text-muted-foreground">
-                            Completed
-                          </span>
-                        ) : (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>
-                                  <Button size="sm" disabled variant="ghost">
-                                    Mark Completed
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Cannot complete before start date</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                        {renderMarkCompletedAction(plan)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -737,34 +742,7 @@ export default function PlannerClient({
                       <TableCell>{getStatusBadge(plan)}</TableCell>
                       <TableCell>{plan.total_hours}</TableCell>
                       <TableCell>
-                        {canMarkCompleted(plan) ? (
-                          <Button
-                            size="sm"
-                            onClick={() => markCompleted(plan.id)}
-                            variant="outline"
-                          >
-                            Mark Completed
-                          </Button>
-                        ) : plan.is_completed ? (
-                          <span className="text-sm text-muted-foreground">
-                            Completed
-                          </span>
-                        ) : (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>
-                                  <Button size="sm" disabled variant="ghost">
-                                    Mark Completed
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Cannot complete before start date</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                        {renderMarkCompletedAction(plan)}
                       </TableCell>
                     </TableRow>
                   ))}
