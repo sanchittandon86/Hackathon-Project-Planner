@@ -78,6 +78,13 @@ export default function PlannerClient({
   const [needsRecalculation, setNeedsRecalculation] = useState(
     initialRecalculationStatus.needsRecalculation
   );
+  // Marking a task complete doesn't touch employees/tasks/leaves, so the
+  // server-computed needsRecalculation (which only compares master-data
+  // timestamps against the plan) won't flip to true on its own. Track this
+  // separately so the "Recalculate Plan" prompt still shows up after a
+  // completion - useful when a task finished earlier than scheduled and the
+  // employee now has freed-up capacity for their next task.
+  const [completionNeedsRecalc, setCompletionNeedsRecalc] = useState(false);
   const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
   // Exclude completed tasks by default - preserves completed plans when regenerating
   const [excludeCompleted, setExcludeCompleted] = useState(true);
@@ -125,6 +132,7 @@ export default function PlannerClient({
           excludeCompleted,
         });
         toast.success("Plan generated successfully!");
+        setCompletionNeedsRecalc(false);
         // Refresh plans after generation
         refreshPlanner();
       } else {
@@ -289,6 +297,7 @@ export default function PlannerClient({
           taskTitle: plan?.task_title,
         });
         toast.success("Task marked as completed!");
+        setCompletionNeedsRecalc(true);
         // Refresh plans
         refreshPlanner();
       }
@@ -760,12 +769,16 @@ export default function PlannerClient({
 
   return (
     <div className="container mx-auto py-8 px-4">
-      {needsRecalculation && (
+      {(needsRecalculation || completionNeedsRecalc) && (
         <Alert variant="warning" className="mb-4">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Recalculation Required</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
-            <span>Master data has changed. Please regenerate the plan.</span>
+            <span>
+              {needsRecalculation
+                ? "Master data has changed. Please regenerate the plan."
+                : "A task was marked complete. Regenerate the plan to account for any freed-up capacity."}
+            </span>
             <Button
               onClick={handleGeneratePlan}
               disabled={generating || isPending}

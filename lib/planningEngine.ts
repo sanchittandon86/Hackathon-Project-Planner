@@ -271,15 +271,15 @@ export async function generatePlanSimulation(
   options: SimulationOptions = {}
 ): Promise<PlanResult[]> {
   // 1. Fetch all master data
-  const { data: employees, error: empError } = await supabase
+  const { data: employeesRaw, error: empError } = await supabase
     .from("employees")
     .select("*");
 
-  const { data: tasks, error: taskError } = await supabase
+  const { data: tasksRaw, error: taskError } = await supabase
     .from("tasks")
     .select("*");
 
-  const { data: leaves, error: leaveError } = await supabase
+  const { data: leavesRaw, error: leaveError } = await supabase
     .from("leaves")
     .select("*");
 
@@ -288,7 +288,22 @@ export async function generatePlanSimulation(
     return [];
   }
 
-  if (!employees || !tasks) return [];
+  if (!employeesRaw || !tasksRaw) return [];
+
+  // Normalize every id to a string. SimulationOptions (and the simulator UI
+  // that builds it) always use string ids, but ids fetched directly from
+  // Supabase come back as numbers - without this, every delayedTasksMap /
+  // leave lookup below silently fails to match and the simulation quietly
+  // ignores every delay/block the user configured.
+  const employees: Employee[] = employeesRaw.map((emp: any) => ({
+    ...emp,
+    id: String(emp.id),
+  }));
+  const tasks = tasksRaw.map((task: any) => ({ ...task, id: String(task.id) }));
+  const leaves = (leavesRaw || []).map((l: any) => ({
+    ...l,
+    employee_id: String(l.employee_id),
+  }));
 
   // 2. Apply simulation overrides
   // Create a map of delayed tasks
@@ -297,20 +312,8 @@ export async function generatePlanSimulation(
     delayedTasksMap.set(dt.task_id, dt.delay_days);
   });
 
-  // Create blocked date ranges for employees
-  const blockedRanges = new Map<string, Array<{ from: Date; to: Date }>>();
-  options.blockedEmployees?.forEach((be) => {
-    if (!blockedRanges.has(be.employee_id)) {
-      blockedRanges.set(be.employee_id, []);
-    }
-    blockedRanges.get(be.employee_id)?.push({
-      from: new Date(be.from),
-      to: new Date(be.to),
-    });
-  });
-
   // Merge blocked ranges with existing leaves
-  const extendedLeaves = leaves ? [...leaves] : [];
+  const extendedLeaves = [...leaves];
   options.blockedEmployees?.forEach((be) => {
     const fromDate = new Date(be.from);
     const toDate = new Date(be.to);
@@ -345,7 +348,6 @@ export async function generatePlanSimulation(
 
   // Helper: check if employee is on leave or blocked on a specific day
   const isOnLeave = (empId: string, date: Date): boolean => {
-    if (!extendedLeaves) return false;
     const dateStr = formatDateLocal(date);
     return extendedLeaves.some(
       (l) => l.employee_id === empId && l.leave_date === dateStr
