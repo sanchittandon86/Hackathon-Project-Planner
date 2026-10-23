@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/utils";
 import type { TaskInsert } from "@/types/database";
 
 export type ActionResult<T = void> = {
@@ -88,7 +89,7 @@ export async function addTask(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[TASKS:ACTION] addTask - Unexpected error:", error);
     return {
       success: false,
@@ -169,7 +170,7 @@ export async function updateTask(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[TASKS:ACTION] updateTask - Unexpected error:", error);
     return {
       success: false,
@@ -206,7 +207,7 @@ export async function deleteTask(id: number): Promise<ActionResult> {
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[TASKS:ACTION] deleteTask - Unexpected error:", error);
     return {
       success: false,
@@ -318,9 +319,9 @@ export async function bulkImportTasks(
         inserted: totalInserted,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[TASKS:BE] bulkImportTasks - Unexpected error", {
-      error: error.message,
+      error: getErrorMessage(error),
     });
     return {
       success: false,

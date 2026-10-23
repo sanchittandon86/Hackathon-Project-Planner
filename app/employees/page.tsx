@@ -43,7 +43,7 @@ export default function EmployeesPage() {
             <CardHeader>
               <CardTitle className="text-3xl font-bold">Employee Master</CardTitle>
               <CardDescription className="mt-2">
-                Manage your organization's employee records
+                Manage your organization&apos;s employee records
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getErrorMessage } from "@/lib/utils";
 import { generatePlanSimulation, type SimulationOptions, type PlanResult } from "@/lib/planningEngine";
 
 export type ActionResult<T = void> = {
@@ -16,6 +17,18 @@ export type ActionResult<T = void> = {
   error?: string;
   data?: T;
 };
+
+type ExistingPlanRow = {
+  id: string;
+  task_id: number;
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  is_completed: boolean;
+};
+
+type EmployeeRow = { id: number; name: string };
+type TaskRow = { id: number; title: string };
 
 /**
  * Run plan simulation on the server
@@ -33,11 +46,11 @@ export async function runPlanSimulation(
       success: true,
       data: plans,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error running plan simulation:", error);
     return {
       success: false,
-      error: error.message || "Failed to run simulation",
+      error: getErrorMessage(error) || "Failed to run simulation",
     };
   }
 }
@@ -86,7 +99,7 @@ export async function applySimulation(
     console.log("[PLANNER:BE] applySimulation - Fetching existing plans for comparison");
     const { data: existingPlans, error: fetchError } = await supabase
       .from("plans")
-      .select("*");
+      .select("*") as { data: ExistingPlanRow[] | null; error: { message: string } | null };
 
     if (fetchError) {
       console.error("[PLANNER:BE] applySimulation - Error fetching existing plans", {
@@ -99,28 +112,48 @@ export async function applySimulation(
       });
     }
 
+    // Completed plans are historical records, not schedules to re-optimize.
+    // Protect them from deletion/overwrite here, matching the same
+    // safeguard in lib/planningEngine.ts's savePlanToDB().
+    const completedTaskIds = new Set(
+      (existingPlans || [])
+        .filter((p) => p.is_completed)
+        .map((p) => p.task_id)
+    );
+    const plansToApply = simulatedPlans.filter(
+      (p) => !completedTaskIds.has(parseInt(p.task_id, 10))
+    );
+
+    // Capture which specific old rows are being superseded *before* we
+    // insert anything, so we can delete exactly those by id afterward
+    // instead of a blanket delete that would also remove rows we just
+    // inserted (or plans that are protected above).
+    const staleOldPlanIds = (existingPlans || [])
+      .filter((p) => !p.is_completed)
+      .map((p) => p.id);
+
     // Fetch employee and task details for version records
     // Convert string IDs to numbers for database queries
     const newEmployeeIds = [
       ...new Set(
-        simulatedPlans
+        plansToApply
           .map((p) => parseInt(p.employee_id, 10))
           .filter((id) => !isNaN(id))
       ),
     ];
     const newTaskIds = [
       ...new Set(
-        simulatedPlans
+        plansToApply
           .map((p) => parseInt(p.task_id, 10))
           .filter((id) => !isNaN(id))
       ),
     ];
 
     const oldEmployeeIds = existingPlans
-      ? [...new Set(existingPlans.map((p: any) => p.employee_id))]
+      ? [...new Set(existingPlans.map((p) => p.employee_id))]
       : [];
     const oldTaskIds = existingPlans
-      ? [...new Set(existingPlans.map((p: any) => p.task_id))]
+      ? [...new Set(existingPlans.map((p) => p.task_id))]
       : [];
 
     const allEmployeeIds = [
@@ -128,24 +161,24 @@ export async function applySimulation(
     ];
     const allTaskIds = [...new Set([...newTaskIds, ...oldTaskIds])];
 
-    const { data: employees } = await supabase
+    const { data: employees } = (await supabase
       .from("employees")
       .select("id, name")
-      .in("id", allEmployeeIds);
+      .in("id", allEmployeeIds)) as { data: EmployeeRow[] | null };
 
-    const { data: tasks } = await supabase
+    const { data: tasks } = (await supabase
       .from("tasks")
       .select("id, title")
-      .in("id", allTaskIds);
+      .in("id", allTaskIds)) as { data: TaskRow[] | null };
 
     // Create maps for quick lookup
     const employeesMap = new Map<string, string>();
-    employees?.forEach((emp: any) => {
+    employees?.forEach((emp) => {
       employeesMap.set(String(emp.id), emp.name);
     });
 
     const tasksMap = new Map<string, string>();
-    tasks?.forEach((task: any) => {
+    tasks?.forEach((task) => {
       tasksMap.set(String(task.id), task.title);
     });
 
@@ -166,10 +199,10 @@ export async function applySimulation(
     }> = [];
 
     if (existingPlans && existingPlans.length > 0) {
-      const existingPlansMap = new Map<string, any>();
-      const existingTasksMap = new Map<string, any>();
+      const existingPlansMap = new Map<string, ExistingPlanRow>();
+      const existingTasksMap = new Map<string, ExistingPlanRow>();
 
-      existingPlans.forEach((plan: any) => {
+      existingPlans.forEach((plan) => {
         const key = `${plan.task_id}-${plan.employee_id}`;
         existingPlansMap.set(key, plan);
 
@@ -178,7 +211,7 @@ export async function applySimulation(
         }
       });
 
-      simulatedPlans.forEach((newPlan) => {
+      plansToApply.forEach((newPlan) => {
         // Convert string IDs to numbers for comparison with existing plans
         const taskIdNum = parseInt(newPlan.task_id, 10);
         const employeeIdNum = parseInt(newPlan.employee_id, 10);
@@ -286,35 +319,16 @@ export async function applySimulation(
       });
     }
 
-    // 3. Delete old plans
-    console.log("[PLANNER:BE] applySimulation - Deleting old plans", {
-      generationId,
-    });
-    const { error: deleteError } = await supabase
-      .from("plans")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-
-    if (deleteError) {
-      console.error("[PLANNER:BE] applySimulation - Error deleting old plans", {
-        error: deleteError.message,
-        generationId,
-      });
-      // Continue anyway - might be first run or empty table
-    } else {
-      console.log("[PLANNER:BE] applySimulation - Old plans deleted successfully", {
-        generationId,
-      });
-    }
-
-    // 4. Insert new plans
+    // 3. Insert new plans BEFORE deleting old ones. If this insert fails,
+    // we return early with the old plans still intact instead of leaving
+    // the table empty.
     // Convert string IDs to numbers for database (database uses number IDs)
-    if (simulatedPlans.length > 0) {
+    if (plansToApply.length > 0) {
       console.log("[PLANNER:BE] applySimulation - Inserting new plans", {
-        planCount: simulatedPlans.length,
+        planCount: plansToApply.length,
         generationId,
       });
-      const plansWithTimestamp = simulatedPlans
+      const plansWithTimestamp = plansToApply
         .map((plan) => {
           const taskId = parseInt(plan.task_id, 10);
           const employeeId = parseInt(plan.employee_id, 10);
@@ -362,6 +376,35 @@ export async function applySimulation(
       });
     }
 
+    // 4. Now that the new plans are safely inserted, delete the specific
+    // stale non-completed rows captured in step 1 (by id, not a blanket
+    // delete, which would also remove the rows we just inserted).
+    // Completed plans are never touched, so completion history can't be
+    // destroyed by applying a simulation.
+    console.log("[PLANNER:BE] applySimulation - Deleting stale plans", {
+      staleCount: staleOldPlanIds.length,
+      generationId,
+    });
+
+    const { error: deleteError } =
+      staleOldPlanIds.length > 0
+        ? await supabase.from("plans").delete().in("id", staleOldPlanIds)
+        : { error: null };
+
+    if (deleteError) {
+      console.error("[PLANNER:BE] applySimulation - Error deleting stale plans", {
+        error: deleteError.message,
+        generationId,
+      });
+      // Not returning false here: the new plans are already safely
+      // inserted, so at worst this leaves stale duplicate rows to be
+      // cleaned up on the next generation rather than losing data.
+    } else {
+      console.log("[PLANNER:BE] applySimulation - Stale plans deleted successfully", {
+        generationId,
+      });
+    }
+
     // Revalidate both planner pages
     console.log("[PLANNER:BE] applySimulation - Revalidating paths", {
       generationId,
@@ -370,20 +413,20 @@ export async function applySimulation(
     revalidatePath("/planner/simulator");
 
     console.log("[PLANNER:BE] applySimulation - Success", {
-      planCount: simulatedPlans.length,
+      planCount: plansToApply.length,
       generationId,
     });
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[PLANNER:BE] applySimulation - Unexpected error", {
-      error: error.message,
+      error: getErrorMessage(error),
       simulatedPlanCount: simulatedPlans?.length || 0,
     });
     return {
       success: false,
-      error: error.message || "Failed to apply simulation",
+      error: getErrorMessage(error) || "Failed to apply simulation",
     };
   }
 }

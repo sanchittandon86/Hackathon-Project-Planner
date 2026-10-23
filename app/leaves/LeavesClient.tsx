@@ -63,8 +63,8 @@ export default function LeavesClient({
 }: LeavesClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [leaves, setLeaves] = useState<LeaveWithEmployee[]>(initialLeaves);
+  const employees = initialEmployees;
+  const leaves = initialLeaves;
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
   const [leaveDate, setLeaveDate] = useState<string>("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -81,17 +81,11 @@ export default function LeavesClient({
     return `${year}-${month}-${day}`;
   };
 
-  // Log component mount and initial data
+  // Log component mount and initial data (intentionally mount-only)
   useEffect(() => {
     console.log(`[LEAVES:FE] Component mounted with ${initialEmployees.length} employees and ${initialLeaves.length} leaves`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Update local state when initial data changes (after refresh)
-  useEffect(() => {
-    console.log(`[LEAVES:FE] Data refreshed - received ${initialEmployees.length} employees and ${initialLeaves.length} leaves`);
-    setEmployees(initialEmployees);
-    setLeaves(initialLeaves);
-  }, [initialEmployees, initialLeaves]);
 
   // Refresh leaves data after mutations
   const refreshLeaves = () => {
@@ -99,13 +93,6 @@ export default function LeavesClient({
     startTransition(() => {
       router.refresh();
     });
-  };
-
-  // Get today's date in YYYY-MM-DD format for date picker min attribute
-  const getTodayDate = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today.toISOString().split('T')[0];
   };
 
   const handleAddLeave = async () => {

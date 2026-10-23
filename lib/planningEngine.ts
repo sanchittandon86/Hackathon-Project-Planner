@@ -8,21 +8,6 @@ type Employee = {
   designation: string;
 };
 
-type Task = {
-  id: string;
-  title: string;
-  client: string;
-  effort_hours: number;
-  designation_required: string;
-  due_date?: string | null;
-};
-
-type Leave = {
-  id: string;
-  employee_id: string;
-  leave_date: string;
-};
-
 export type PlanResult = {
   task_id: string;
   employee_id: string;
@@ -46,25 +31,26 @@ export async function generatePlan(
     .from("tasks")
     .select("*");
 
+  const { data: existingPlans, error: plansError } = await supabase
+    .from("plans")
+    .select("*");
+
   // If excluding completed plans, fetch completed plan task IDs
   let completedTaskIds: Set<string> = new Set();
   if (excludeCompleted) {
-    const { data: completedPlans } = await supabase
-      .from("plans")
-      .select("task_id")
-      .eq("is_completed", true);
-    
-    if (completedPlans) {
-      completedTaskIds = new Set(completedPlans.map((p: any) => String(p.task_id)));
-    }
+    completedTaskIds = new Set(
+      (existingPlans || [])
+        .filter((p: any) => p.is_completed)
+        .map((p: any) => String(p.task_id))
+    );
   }
 
   const { data: leaves, error: leaveError } = await supabase
     .from("leaves")
     .select("*");
 
-  if (empError || taskError || leaveError) {
-    console.error("Error fetching data:", { empError, taskError, leaveError });
+  if (empError || taskError || leaveError || plansError) {
+    console.error("Error fetching data:", { empError, taskError, leaveError, plansError });
     return [];
   }
 
@@ -80,8 +66,11 @@ export async function generatePlan(
     return [];
   }
 
-  // Sort tasks by effort (smallest first for better distribution)
-  tasksToPlan.sort((a, b) => a.effort_hours - b.effort_hours);
+  const employeeById = new Map(employees.map((emp) => [emp.id, emp]));
+  const existingPlanByTaskId = new Map<string, any>();
+  (existingPlans || []).forEach((p: any) => {
+    existingPlanByTaskId.set(String(p.task_id), p);
+  });
 
   const plans: PlanResult[] = [];
   const employeeWorkload: Map<string, Date> = new Map(); // Track when each employee is next available
@@ -125,8 +114,71 @@ export async function generatePlan(
     });
   };
 
-  // 2. For each task, assign to the least loaded matching employee
+  // 2. Keep already-assigned tasks exactly as they are (same employee, same
+  // dates) so that adding/regenerating doesn't reshuffle unrelated tasks.
+  // A task is only re-scheduled if it has no existing assignment, or if
+  // something about it actually changed (effort hours, or the assigned
+  // employee's designation no longer matches what the task now requires).
+  const tasksNeedingSchedule: typeof tasksToPlan = [];
+
   for (const task of tasksToPlan) {
+    const existing = existingPlanByTaskId.get(String(task.id));
+    const assignedEmployee = existing ? employeeById.get(existing.employee_id) : undefined;
+
+    const unchanged =
+      existing &&
+      assignedEmployee &&
+      assignedEmployee.designation === task.designation_required &&
+      Number(existing.total_hours) === Number(task.effort_hours);
+
+    if (!unchanged) {
+      tasksNeedingSchedule.push(task);
+      continue;
+    }
+
+    // Recompute overdue status against the task's current due_date (it may
+    // have changed since the assignment was made), but keep the employee
+    // and dates untouched.
+    let is_overdue = false;
+    let days_overdue = 0;
+    if (task.due_date) {
+      const dueDate = new Date(task.due_date);
+      const calculatedEndDate = new Date(existing.end_date);
+      if (calculatedEndDate > dueDate) {
+        is_overdue = true;
+        const diffTime = calculatedEndDate.getTime() - dueDate.getTime();
+        days_overdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    plans.push({
+      task_id: task.id,
+      employee_id: existing.employee_id,
+      start_date: existing.start_date,
+      end_date: existing.end_date,
+      total_hours: task.effort_hours,
+      is_overdue,
+      days_overdue,
+    });
+
+    // Seed this employee's workload/availability so new tasks are scheduled
+    // around the work they're already committed to, instead of from zero.
+    workload[existing.employee_id] = (workload[existing.employee_id] || 0) + task.effort_hours;
+    const nextAvailableAfterKept = addDays(new Date(existing.end_date), 1);
+    const currentNext = employeeWorkload.get(existing.employee_id);
+    if (!currentNext || nextAvailableAfterKept > currentNext) {
+      employeeWorkload.set(existing.employee_id, nextAvailableAfterKept);
+    }
+  }
+
+  // Sort only the tasks that actually need (re)scheduling, smallest effort
+  // first, same fairness heuristic as before.
+  tasksNeedingSchedule.sort((a, b) => a.effort_hours - b.effort_hours);
+
+  // 3. For each task still needing scheduling, assign to the least loaded
+  // matching employee, continuing from each employee's already-committed
+  // workload/availability instead of resetting everyone to zero.
+  for (const task of tasksNeedingSchedule) {
     // Find employees with matching designation
     const candidates = employees.filter(
       (emp) => emp.designation === task.designation_required
@@ -148,7 +200,7 @@ export async function generatePlan(
 
     const earliestDate = getNextWorkday(selectedEmployee.id, nextAvailable);
 
-    // 3. Allocate task sequentially using 8 hours per day
+    // 4. Allocate task sequentially using 8 hours per day
     let remaining = task.effort_hours;
     let current = new Date(earliestDate);
     let startDate = "";
@@ -219,15 +271,15 @@ export async function generatePlanSimulation(
   options: SimulationOptions = {}
 ): Promise<PlanResult[]> {
   // 1. Fetch all master data
-  const { data: employees, error: empError } = await supabase
+  const { data: employeesRaw, error: empError } = await supabase
     .from("employees")
     .select("*");
 
-  const { data: tasks, error: taskError } = await supabase
+  const { data: tasksRaw, error: taskError } = await supabase
     .from("tasks")
     .select("*");
 
-  const { data: leaves, error: leaveError } = await supabase
+  const { data: leavesRaw, error: leaveError } = await supabase
     .from("leaves")
     .select("*");
 
@@ -236,7 +288,22 @@ export async function generatePlanSimulation(
     return [];
   }
 
-  if (!employees || !tasks) return [];
+  if (!employeesRaw || !tasksRaw) return [];
+
+  // Normalize every id to a string. SimulationOptions (and the simulator UI
+  // that builds it) always use string ids, but ids fetched directly from
+  // Supabase come back as numbers - without this, every delayedTasksMap /
+  // leave lookup below silently fails to match and the simulation quietly
+  // ignores every delay/block the user configured.
+  const employees: Employee[] = employeesRaw.map((emp: any) => ({
+    ...emp,
+    id: String(emp.id),
+  }));
+  const tasks = tasksRaw.map((task: any) => ({ ...task, id: String(task.id) }));
+  const leaves = (leavesRaw || []).map((l: any) => ({
+    ...l,
+    employee_id: String(l.employee_id),
+  }));
 
   // 2. Apply simulation overrides
   // Create a map of delayed tasks
@@ -245,20 +312,8 @@ export async function generatePlanSimulation(
     delayedTasksMap.set(dt.task_id, dt.delay_days);
   });
 
-  // Create blocked date ranges for employees
-  const blockedRanges = new Map<string, Array<{ from: Date; to: Date }>>();
-  options.blockedEmployees?.forEach((be) => {
-    if (!blockedRanges.has(be.employee_id)) {
-      blockedRanges.set(be.employee_id, []);
-    }
-    blockedRanges.get(be.employee_id)?.push({
-      from: new Date(be.from),
-      to: new Date(be.to),
-    });
-  });
-
   // Merge blocked ranges with existing leaves
-  const extendedLeaves = leaves ? [...leaves] : [];
+  const extendedLeaves = [...leaves];
   options.blockedEmployees?.forEach((be) => {
     const fromDate = new Date(be.from);
     const toDate = new Date(be.to);
@@ -293,7 +348,6 @@ export async function generatePlanSimulation(
 
   // Helper: check if employee is on leave or blocked on a specific day
   const isOnLeave = (empId: string, date: Date): boolean => {
-    if (!extendedLeaves) return false;
     const dateStr = formatDateLocal(date);
     return extendedLeaves.some(
       (l) => l.employee_id === empId && l.leave_date === dateStr

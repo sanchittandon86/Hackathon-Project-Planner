@@ -79,7 +79,7 @@ export function HowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">How It Works</p>
                 <p className="text-sm text-muted-foreground">
-                  Before saving new plans, compares them with existing plans. If a task's dates changed or it was reassigned, creates a version record showing old dates, new dates, and the difference in days (delta).
+                  Before saving new plans, compares them with existing plans. If a task&apos;s dates changed or it was reassigned, creates a version record showing old dates, new dates, and the difference in days (delta).
                 </p>
               </div>
               <div>
@@ -102,7 +102,7 @@ export function HowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">Generation Grouping</p>
                 <p className="text-sm text-muted-foreground">
-                  All changes from a single "Generate Plan" click are grouped together with a timestamp for easy review.
+                  All changes from a single &quot;Generate Plan&quot; click are grouped together with a timestamp for easy review.
                 </p>
               </div>
             </CardContent>

@@ -101,7 +101,7 @@ export async function addLeave(
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[LEAVES:ACTION] addLeave - Unexpected error:", error);
     return {
       success: false,
@@ -184,7 +184,7 @@ export async function deleteLeave(id: number): Promise<ActionResult> {
     return {
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[LEAVES:ACTION] deleteLeave - Unexpected error:", error);
     return {
       success: false,

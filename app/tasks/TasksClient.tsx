@@ -77,7 +77,7 @@ type TasksClientProps = {
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const tasks = initialTasks;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -102,16 +102,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     due_date: null,
   });
 
-  // Log component mount and initial data
+  // Log component mount and initial data (intentionally mount-only)
   useEffect(() => {
     console.log(`[TASKS:FE] Component mounted with ${initialTasks.length} tasks`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Update local state when initialTasks changes (after refresh)
-  useEffect(() => {
-    console.log(`[TASKS:FE] Data refreshed - received ${initialTasks.length} tasks`);
-    setTasks(initialTasks);
-  }, [initialTasks]);
 
   // Refresh tasks data after mutations
   const refreshTasks = () => {
@@ -698,7 +693,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
             <div className="text-center py-12">
               <p className="text-muted-foreground text-lg">No tasks found</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Click the "Add Task" button to create your first task
+                Click the &quot;Add Task&quot; button to create your first task
               </p>
             </div>
           ) : filteredTasks.length === 0 ? (

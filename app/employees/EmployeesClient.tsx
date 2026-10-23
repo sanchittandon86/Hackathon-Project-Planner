@@ -83,7 +83,7 @@ export default function EmployeesClient({
 }: EmployeesClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
+  const employees = initialEmployees;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
@@ -380,16 +380,11 @@ export default function EmployeesClient({
   ).length;
   const qaCount = employees.filter((emp) => emp.designation === "QA").length;
 
-  // Log component mount and initial data
+  // Log component mount and initial data (intentionally mount-only)
   useEffect(() => {
     console.log(`[EMPLOYEES:FE] Component mounted with ${initialEmployees.length} employees`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Update local state when initialEmployees changes (after refresh)
-  useEffect(() => {
-    console.log(`[EMPLOYEES:FE] Data refreshed - received ${initialEmployees.length} employees`);
-    setEmployees(initialEmployees);
-  }, [initialEmployees]);
 
   return (
     <div className="container mx-auto py-10 px-4 space-y-6">
@@ -458,7 +453,7 @@ export default function EmployeesClient({
             <div>
               <CardTitle className="text-2xl sm:text-3xl font-bold">Employee Master</CardTitle>
               <CardDescription className="mt-2">
-                Manage your organization's employee records
+                Manage your organization&apos;s employee records
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -645,7 +640,7 @@ export default function EmployeesClient({
             <div className="text-center py-12">
               <p className="text-muted-foreground text-lg">No employees found</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Click the "Add Employee" button to create your first employee
+                Click the &quot;Add Employee&quot; button to create your first employee
                 record
               </p>
             </div>
