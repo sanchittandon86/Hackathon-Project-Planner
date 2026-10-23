@@ -149,6 +149,23 @@ export async function updateTask(
 
     const supabase = await createServerSupabaseClient();
 
+    // Block edits to tasks that already have a completed plan - the UI
+    // disables this too, but that's bypassable, so the real guard is here.
+    const { data: completedPlan } = await supabase
+      .from("plans")
+      .select("id")
+      .eq("task_id", id)
+      .eq("is_completed", true)
+      .maybeSingle();
+
+    if (completedPlan) {
+      console.log("[TASKS:ACTION] updateTask - Rejected: task is completed", { id });
+      return {
+        success: false,
+        error: "This task has been completed and cannot be edited.",
+      };
+    }
+
     const { error } = await supabase
       .from("tasks")
       .update({ ...task, last_updated: new Date().toISOString() })
@@ -186,6 +203,23 @@ export async function deleteTask(id: number): Promise<ActionResult> {
   console.log("[TASKS:ACTION] deleteTask called", { id });
   try {
     const supabase = await createServerSupabaseClient();
+
+    // Block deletion of tasks that already have a completed plan - the UI
+    // disables this too, but that's bypassable, so the real guard is here.
+    const { data: completedPlan } = await supabase
+      .from("plans")
+      .select("id")
+      .eq("task_id", id)
+      .eq("is_completed", true)
+      .maybeSingle();
+
+    if (completedPlan) {
+      console.log("[TASKS:ACTION] deleteTask - Rejected: task is completed", { id });
+      return {
+        success: false,
+        error: "This task has been completed and cannot be deleted.",
+      };
+    }
 
     const { error } = await supabase
       .from("tasks")
