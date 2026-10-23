@@ -132,23 +132,35 @@ export async function generatePlan(
     });
   };
 
-  // Helper: does the employee now have a leave day that falls inside a
-  // range they were already scheduled to work? A leave added after the
-  // task was assigned doesn't change effort_hours or designation, so
-  // without this check the task would incorrectly stay "unchanged" even
-  // though the employee can no longer actually work every day in that range.
-  const hasLeaveWithinRange = (
+  // Helper: recompute what the end date WOULD be if the day-by-day 8hr/day
+  // allocation re-ran for this employee starting from their existing start
+  // date, using current leave data. If it matches the stored end_date, the
+  // leave situation hasn't changed since this was last scheduled (or a
+  // leave inside the range was already correctly accounted for), so the
+  // task can stay put. If it differs - a leave was added or removed since -
+  // the task needs to be rescheduled. Comparing merely "is there a leave in
+  // this range" isn't enough: that's true forever once a leave lands inside
+  // an already-adjusted range, which would force a reschedule on every
+  // single future regeneration instead of just the one time it actually
+  // changed something.
+  const recomputeEndDate = (
     empId: string,
     startDateStr: string,
-    endDateStr: string
-  ): boolean => {
-    if (!leaves) return false;
-    return leaves.some(
-      (l) =>
-        l.employee_id === empId &&
-        l.leave_date >= startDateStr &&
-        l.leave_date <= endDateStr
-    );
+    effortHours: number
+  ): string => {
+    let remaining = effortHours;
+    let current = new Date(startDateStr);
+    let endDate = "";
+    while (remaining > 0) {
+      if (isWeekend(current) || isOnLeave(empId, current)) {
+        current = addDays(current, 1);
+        continue;
+      }
+      remaining -= 8;
+      endDate = formatDateLocal(current);
+      current = addDays(current, 1);
+    }
+    return endDate;
   };
 
   // 2. Keep already-assigned tasks exactly as they are (same employee, same
@@ -156,7 +168,7 @@ export async function generatePlan(
   // A task is only re-scheduled if it has no existing assignment, or if
   // something about it actually changed (effort hours, the assigned
   // employee's designation no longer matches what the task now requires,
-  // or the employee has a new leave day inside the already-assigned range).
+  // or a leave added/removed since means the stored end date is now wrong).
   const tasksNeedingSchedule: typeof tasksToPlan = [];
 
   for (const task of tasksToPlan) {
@@ -168,7 +180,8 @@ export async function generatePlan(
       assignedEmployee &&
       assignedEmployee.designation === task.designation_required &&
       Number(existing.total_hours) === Number(task.effort_hours) &&
-      !hasLeaveWithinRange(existing.employee_id, existing.start_date, existing.end_date);
+      recomputeEndDate(existing.employee_id, existing.start_date, Number(task.effort_hours)) ===
+        existing.end_date;
 
     if (!unchanged) {
       tasksNeedingSchedule.push(task);
