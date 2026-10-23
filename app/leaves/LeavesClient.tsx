@@ -157,7 +157,15 @@ export default function LeavesClient({
     }
   };
 
+  const isPastLeave = (leaveDate: string): boolean => {
+    return leaveDate < getTodayLocal();
+  };
+
   const handleDeleteClick = (leave: LeaveWithEmployee) => {
+    if (isPastLeave(leave.leave_date)) {
+      toast.error("This leave date has already passed and cannot be deleted.");
+      return;
+    }
     console.log("[LEAVES:FE] handleDeleteClick - Opening delete confirmation", { id: leave.id, employeeName: leave.employee_name, leaveDate: leave.leave_date });
     setLeaveToDelete(leave);
     setDeleteDialogOpen(true);
@@ -280,7 +288,13 @@ export default function LeavesClient({
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDeleteClick(leave)}
-                          className="text-destructive hover:text-destructive"
+                          disabled={isPastLeave(leave.leave_date)}
+                          className="text-destructive hover:text-destructive disabled:opacity-40 disabled:pointer-events-none"
+                          title={
+                            isPastLeave(leave.leave_date)
+                              ? "This leave date has already passed and cannot be deleted"
+                              : "Delete leave"
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

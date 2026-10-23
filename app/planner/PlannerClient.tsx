@@ -295,8 +295,18 @@ export default function PlannerClient({
         console.log("[PLANNER:FE] markCompleted - Success", {
           planId,
           taskTitle: plan?.task_title,
+          qaHandoff: result.data,
         });
         toast.success("Task marked as completed!");
+        if (result.data?.qaTaskCreated) {
+          if (result.data.noQaInOrg) {
+            toast.warning(
+              "No QA in org — a QA task was created but is waiting for a QA employee to be added."
+            );
+          } else {
+            toast.success("QA task created and ready to be scheduled!");
+          }
+        }
         setCompletionNeedsRecalc(true);
         // Refresh plans
         refreshPlanner();
