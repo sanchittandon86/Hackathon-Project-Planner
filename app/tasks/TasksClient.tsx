@@ -15,7 +15,8 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Task, TaskInsert } from "@/types/database";
+import { TaskInsert } from "@/types/database";
+import type { TaskWithCompletion } from "@/lib/tasks/server";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,7 +72,7 @@ import { addTask, updateTask, deleteTask, bulkImportTasks } from "./actions";
 import { formatDateLocal } from "@/lib/utils";
 
 type TasksClientProps = {
-  initialTasks: Task[];
+  initialTasks: TaskWithCompletion[];
 };
 
 export default function TasksClient({ initialTasks }: TasksClientProps) {
@@ -80,7 +81,9 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   const tasks = initialTasks;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskWithCompletion | null>(
+    null
+  );
   const [deleteTaskId, setDeleteTaskId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
@@ -260,7 +263,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   };
 
   // Open dialog for editing task
-  const openEditDialog = (task: Task) => {
+  const openEditDialog = (task: TaskWithCompletion) => {
+    if (task.is_completed) {
+      toast.error("This task has been completed and cannot be edited.");
+      return;
+    }
     console.log("[TASKS:FE] openEditDialog - Opening edit dialog", { id: task.id, title: task.title, client: task.client });
     setSelectedTask(task);
     setFormData({
@@ -274,9 +281,13 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   };
 
   // Open delete confirmation dialog
-  const openDeleteDialog = (id: number) => {
-    console.log("[TASKS:FE] openDeleteDialog - Opening delete confirmation", { id });
-    setDeleteTaskId(id);
+  const openDeleteDialog = (task: TaskWithCompletion) => {
+    if (task.is_completed) {
+      toast.error("This task has been completed and cannot be deleted.");
+      return;
+    }
+    console.log("[TASKS:FE] openDeleteDialog - Opening delete confirmation", { id: task.id });
+    setDeleteTaskId(task.id);
     setIsDeleteDialogOpen(true);
   };
 
@@ -781,17 +792,27 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
                             variant="outline"
                             size="icon"
                             onClick={() => openEditDialog(task)}
-                            className="h-8 w-8 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all"
-                            title="Edit task"
+                            disabled={task.is_completed}
+                            className="h-8 w-8 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                            title={
+                              task.is_completed
+                                ? "Completed tasks cannot be edited"
+                                : "Edit task"
+                            }
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="outline"
                             size="icon"
-                            onClick={() => openDeleteDialog(task.id)}
-                            className="h-8 w-8 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
-                            title="Delete task"
+                            onClick={() => openDeleteDialog(task)}
+                            disabled={task.is_completed}
+                            className="h-8 w-8 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                            title={
+                              task.is_completed
+                                ? "Completed tasks cannot be deleted"
+                                : "Delete task"
+                            }
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
