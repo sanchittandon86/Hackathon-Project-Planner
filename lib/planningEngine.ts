@@ -132,11 +132,31 @@ export async function generatePlan(
     });
   };
 
+  // Helper: does the employee now have a leave day that falls inside a
+  // range they were already scheduled to work? A leave added after the
+  // task was assigned doesn't change effort_hours or designation, so
+  // without this check the task would incorrectly stay "unchanged" even
+  // though the employee can no longer actually work every day in that range.
+  const hasLeaveWithinRange = (
+    empId: string,
+    startDateStr: string,
+    endDateStr: string
+  ): boolean => {
+    if (!leaves) return false;
+    return leaves.some(
+      (l) =>
+        l.employee_id === empId &&
+        l.leave_date >= startDateStr &&
+        l.leave_date <= endDateStr
+    );
+  };
+
   // 2. Keep already-assigned tasks exactly as they are (same employee, same
   // dates) so that adding/regenerating doesn't reshuffle unrelated tasks.
   // A task is only re-scheduled if it has no existing assignment, or if
-  // something about it actually changed (effort hours, or the assigned
-  // employee's designation no longer matches what the task now requires).
+  // something about it actually changed (effort hours, the assigned
+  // employee's designation no longer matches what the task now requires,
+  // or the employee has a new leave day inside the already-assigned range).
   const tasksNeedingSchedule: typeof tasksToPlan = [];
 
   for (const task of tasksToPlan) {
@@ -147,7 +167,8 @@ export async function generatePlan(
       existing &&
       assignedEmployee &&
       assignedEmployee.designation === task.designation_required &&
-      Number(existing.total_hours) === Number(task.effort_hours);
+      Number(existing.total_hours) === Number(task.effort_hours) &&
+      !hasLeaveWithinRange(existing.employee_id, existing.start_date, existing.end_date);
 
     if (!unchanged) {
       tasksNeedingSchedule.push(task);
