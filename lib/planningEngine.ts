@@ -100,17 +100,35 @@ export async function generatePlan(
     return current;
   };
 
-  // Helper: pick the employee with the least total allocated hours
-  const pickLeastLoadedEmployee = (
+  // Helper: pick the best employee for a task. Prefers whoever can actually
+  // start soonest (skipping weekends/leave via getNextWorkday), falling
+  // back to least total workload only when candidates can start on the
+  // same day. Without the availability check, a candidate who happens to
+  // be on leave for the next two weeks but has a low workload would still
+  // get picked, and the task would just sit waiting for them instead of
+  // going to a free teammate.
+  const pickBestEmployee = (
     candidates: Employee[],
     workloadMap: Record<string, number>
   ): Employee | null => {
     if (candidates.length === 0) return null;
 
-    return candidates.reduce((minEmp, emp) => {
-      const minWorkload = workloadMap[minEmp.id] || 0;
+    return candidates.reduce((best, emp) => {
+      const bestNextAvailable = employeeWorkload.get(best.id);
+      const empNextAvailable = employeeWorkload.get(emp.id);
+      if (!empNextAvailable) return best;
+      if (!bestNextAvailable) return emp;
+
+      const bestStart = getNextWorkday(best.id, bestNextAvailable);
+      const empStart = getNextWorkday(emp.id, empNextAvailable);
+
+      if (empStart.getTime() !== bestStart.getTime()) {
+        return empStart < bestStart ? emp : best;
+      }
+
+      const bestWorkload = workloadMap[best.id] || 0;
       const empWorkload = workloadMap[emp.id] || 0;
-      return empWorkload < minWorkload ? emp : minEmp;
+      return empWorkload < bestWorkload ? emp : best;
     });
   };
 
@@ -189,8 +207,8 @@ export async function generatePlan(
       continue;
     }
 
-    // Select the employee with the least total allocated hours
-    const selectedEmployee = pickLeastLoadedEmployee(candidates, workload);
+    // Select whoever can start soonest, breaking ties by least workload
+    const selectedEmployee = pickBestEmployee(candidates, workload);
 
     if (!selectedEmployee) continue;
 
@@ -363,21 +381,38 @@ export async function generatePlanSimulation(
     return current;
   };
 
-  // Helper: pick the employee with the least total allocated hours
-  const pickLeastLoadedEmployee = (
+  // Helper: pick the best employee for a task. Prefers whoever can actually
+  // start soonest (skipping weekends/leave/blocked days via getNextWorkday),
+  // falling back to least total workload only when candidates can start on
+  // the same day. Without the availability check, blocking an employee
+  // wouldn't reroute their work to a free teammate - the task would just
+  // sit waiting for the blocked employee to become available again.
+  const pickBestEmployee = (
     candidates: Employee[],
     workloadMap: Record<string, number>
   ): Employee | null => {
     if (candidates.length === 0) return null;
 
-    return candidates.reduce((minEmp, emp) => {
-      const minWorkload = workloadMap[minEmp.id] || 0;
+    return candidates.reduce((best, emp) => {
+      const bestNextAvailable = employeeWorkload.get(best.id);
+      const empNextAvailable = employeeWorkload.get(emp.id);
+      if (!empNextAvailable) return best;
+      if (!bestNextAvailable) return emp;
+
+      const bestStart = getNextWorkday(best.id, bestNextAvailable);
+      const empStart = getNextWorkday(emp.id, empNextAvailable);
+
+      if (empStart.getTime() !== bestStart.getTime()) {
+        return empStart < bestStart ? emp : best;
+      }
+
+      const bestWorkload = workloadMap[best.id] || 0;
       const empWorkload = workloadMap[emp.id] || 0;
-      return empWorkload < minWorkload ? emp : minEmp;
+      return empWorkload < bestWorkload ? emp : best;
     });
   };
 
-  // 3. For each task, assign to the least loaded matching employee
+  // 3. For each task, assign to the best available matching employee
   for (const task of tasks) {
     // Find employees with matching designation
     const candidates = employees.filter(
@@ -388,8 +423,8 @@ export async function generatePlanSimulation(
       continue;
     }
 
-    // Select the employee with the least total allocated hours
-    const selectedEmployee = pickLeastLoadedEmployee(candidates, workload);
+    // Select whoever can start soonest, breaking ties by least workload
+    const selectedEmployee = pickBestEmployee(candidates, workload);
 
     if (!selectedEmployee) continue;
 
