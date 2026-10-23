@@ -29,12 +29,70 @@ function getTodayLocal(): string {
   return `${year}-${month}-${day}`;
 }
 
+type QaHandoffResult = {
+  qaTaskCreated: boolean;
+  noQaInOrg: boolean;
+};
+
+/**
+ * If a completed task required a Developer, clone it into a new QA task
+ * (same client/title/effort/due date, designation_required = "QA") so the
+ * work flows on to QA next. If no active QA employee exists yet, the task
+ * is still created - it'll just sit unscheduled until one is added, and the
+ * caller is told via noQaInOrg so the UI can surface that.
+ */
+async function handleDeveloperCompletionHandoff(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  task: {
+    title: string;
+    client: string;
+    effort_hours: number;
+    designation_required: string;
+    due_date: string | null;
+  }
+): Promise<QaHandoffResult> {
+  if (task.designation_required !== "Developer") {
+    return { qaTaskCreated: false, noQaInOrg: false };
+  }
+
+  const { data: qaEmployees } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("designation", "QA")
+    .eq("active", true)
+    .limit(1);
+
+  const noQaInOrg = !qaEmployees || qaEmployees.length === 0;
+
+  const { error: insertError } = await supabase.from("tasks").insert({
+    client: task.client,
+    title: `QA: ${task.title}`,
+    effort_hours: task.effort_hours,
+    designation_required: "QA",
+    due_date: task.due_date,
+  });
+
+  if (insertError) {
+    console.error("[PLANNER:BE] handleDeveloperCompletionHandoff - Failed to create QA task", {
+      error: insertError.message,
+    });
+    return { qaTaskCreated: false, noQaInOrg };
+  }
+
+  console.log("[PLANNER:BE] handleDeveloperCompletionHandoff - QA task created", {
+    title: `QA: ${task.title}`,
+    noQaInOrg,
+  });
+
+  return { qaTaskCreated: true, noQaInOrg };
+}
+
 /**
  * Mark a plan as completed
  */
 export async function markPlanCompleted(
   planId: number
-): Promise<ActionResult> {
+): Promise<ActionResult<QaHandoffResult>> {
   console.log("[PLANNER:BE] markPlanCompleted - Called", { planId });
   try {
     if (!planId) {
@@ -53,7 +111,7 @@ export async function markPlanCompleted(
       .from("plans")
       .select(`
         *,
-        task:tasks(due_date)
+        task:tasks(title, client, effort_hours, designation_required, due_date)
       `)
       .eq("id", planId)
       .single();
@@ -69,8 +127,14 @@ export async function markPlanCompleted(
       };
     }
 
-    const taskDueDate =
-      (planData.task as { due_date: string | null } | null)?.due_date || null;
+    const taskDetails = planData.task as {
+      title: string;
+      client: string;
+      effort_hours: number;
+      designation_required: string;
+      due_date: string | null;
+    } | null;
+    const taskDueDate = taskDetails?.due_date || null;
     const endDate = getTodayLocal(); // Current date in local timezone (YYYY-MM-DD format)
     
     // Compare endDate (current date) with dueDate to determine completion type
@@ -127,16 +191,27 @@ export async function markPlanCompleted(
       };
     }
 
-    // Revalidate the planner page to show updated data
+    // If this was a Developer task, hand it off to QA by cloning a QA task
+    let qaHandoff: QaHandoffResult = { qaTaskCreated: false, noQaInOrg: false };
+    if (taskDetails) {
+      qaHandoff = await handleDeveloperCompletionHandoff(supabase, taskDetails);
+    }
+
+    // Revalidate the planner and tasks pages to show updated data
     revalidatePath("/planner");
+    if (qaHandoff.qaTaskCreated) {
+      revalidatePath("/tasks");
+    }
     console.log("[PLANNER:BE] markPlanCompleted - Success, revalidated path", {
       planId,
       completionType,
       endDate,
+      qaHandoff,
     });
 
     return {
       success: true,
+      data: qaHandoff,
     };
   } catch (error: unknown) {
     console.error("[PLANNER:BE] markPlanCompleted - Unexpected error", {
