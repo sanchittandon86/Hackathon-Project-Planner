@@ -42,7 +42,7 @@ export async function fetchEmployees(): Promise<Employee[]> {
   const count = data?.length || 0;
   console.log(`[LEAVES:FETCH] Successfully fetched ${count} employees`);
   return (data || []).map((emp) => ({
-    id: emp.id,
+    id: String(emp.id),
     name: emp.name,
     designation: emp.designation,
   }));
@@ -69,7 +69,7 @@ export async function fetchLeaves(): Promise<LeaveWithEmployee[]> {
   // Transform data to include employee_name
   const leavesWithNames: LeaveWithEmployee[] = (data || []).map((leave: any) => ({
     id: leave.id,
-    employee_id: leave.employee_id,
+    employee_id: String(leave.employee_id),
     leave_date: leave.leave_date,
     employee_name: leave.employees?.name || "Unknown Employee",
   }));
