@@ -40,6 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { type SimulationOptions } from "@/lib/planningEngine";
 import { runPlanSimulation } from "./actions";
 import { toast } from "sonner";
@@ -96,6 +104,7 @@ export default function SimulatorClient({
   const [simulating, setSimulating] = useState(false);
   const [applying, setApplying] = useState(false);
   const [simulatedPlans, setSimulatedPlans] = useState<SimulatedPlan[]>([]);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
 
   // Simulation options
   const [delayedTasks, setDelayedTasks] = useState<DelayedTask[]>([]);
@@ -263,20 +272,17 @@ export default function SimulatorClient({
     }
   };
 
-  const handleApplyChanges = async () => {
+  const handleApplyChanges = () => {
     if (simulatedPlans.length === 0) {
       toast.error("No simulation results to apply. Run simulation first.");
       return;
     }
 
-    if (
-      !confirm(
-        "Are you sure you want to apply these changes? This will update the real plan."
-      )
-    ) {
-      return;
-    }
+    setShowApplyConfirm(true);
+  };
 
+  const confirmApplyChanges = async () => {
+    setShowApplyConfirm(false);
     setApplying(true);
     try {
       const result = await applySimulation(simulatedPlans);
@@ -577,6 +583,30 @@ export default function SimulatorClient({
           </Card>
         )
       )}
+
+      <Dialog open={showApplyConfirm} onOpenChange={setShowApplyConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Apply simulated changes?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to apply these changes? This will update
+              the real plan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowApplyConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmApplyChanges}>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Apply Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
