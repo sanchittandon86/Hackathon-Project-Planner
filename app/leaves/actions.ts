@@ -126,10 +126,10 @@ export async function deleteLeave(id: number): Promise<ActionResult> {
 
     const supabase = await createServerSupabaseClient();
 
-    // First, fetch the leave to get the employee_id before deleting
+    // First, fetch the leave to get the employee_id and date before deleting
     const { data: leaveData, error: fetchError } = await supabase
       .from("leaves")
-      .select("employee_id")
+      .select("employee_id, leave_date")
       .eq("id", id)
       .single();
 
@@ -141,6 +141,21 @@ export async function deleteLeave(id: number): Promise<ActionResult> {
       return {
         success: false,
         error: "Leave not found",
+      };
+    }
+
+    // Block deleting a leave whose date has already passed - the UI
+    // disables this too, but that's bypassable, so the real guard is here.
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    if (leaveData.leave_date < todayStr) {
+      console.log("[LEAVES:ACTION] deleteLeave - Rejected: leave date has passed", {
+        id,
+        leaveDate: leaveData.leave_date,
+      });
+      return {
+        success: false,
+        error: "This leave date has already passed and cannot be deleted.",
       };
     }
 
