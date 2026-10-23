@@ -21,28 +21,40 @@ export type Employee = {
 };
 
 /**
- * Fetch all tasks for simulator
+ * Fetch all tasks for simulator, excluding ones that are already completed -
+ * there's nothing left to simulate for a task that's already done.
  */
 export async function fetchTasksForSimulator(): Promise<Task[]> {
   const supabase = await createServerSupabaseClient();
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*")
-    .order("title");
+  const [{ data, error }, { data: completedPlans, error: plansError }] =
+    await Promise.all([
+      supabase.from("tasks").select("*").order("title"),
+      supabase.from("plans").select("task_id").eq("is_completed", true),
+    ]);
 
   if (error) {
     console.error("Error fetching tasks:", error);
     return [];
   }
 
-  return (data || []).map((task: any) => ({
-    id: String(task.id), // Convert to string to match simulation engine
-    title: task.title,
-    client: task.client,
-    effort_hours: task.effort_hours,
-    designation_required: task.designation_required,
-  }));
+  if (plansError) {
+    console.error("Error fetching completed plans:", plansError);
+  }
+
+  const completedTaskIds = new Set(
+    (completedPlans || []).map((p: { task_id: number }) => p.task_id)
+  );
+
+  return (data || [])
+    .filter((task: any) => !completedTaskIds.has(task.id))
+    .map((task: any) => ({
+      id: String(task.id), // Convert to string to match simulation engine
+      title: task.title,
+      client: task.client,
+      effort_hours: task.effort_hours,
+      designation_required: task.designation_required,
+    }));
 }
 
 /**

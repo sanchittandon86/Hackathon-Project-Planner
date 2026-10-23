@@ -301,12 +301,30 @@ export async function generatePlanSimulation(
     .from("leaves")
     .select("*");
 
+  const { data: completedPlans, error: plansError } = await supabase
+    .from("plans")
+    .select("task_id")
+    .eq("is_completed", true);
+
   if (empError || taskError || leaveError) {
     console.error("Error fetching data:", { empError, taskError, leaveError });
     return [];
   }
 
+  if (plansError) {
+    console.error("Error fetching completed plans:", plansError);
+  }
+
   if (!employeesRaw || !tasksRaw) return [];
+
+  // Exclude tasks that are already completed - there's nothing left to
+  // simulate for work that's already done.
+  const completedTaskIds = new Set(
+    (completedPlans || []).map((p: { task_id: number }) => p.task_id)
+  );
+  const uncompletedTasksRaw = tasksRaw.filter(
+    (task: any) => !completedTaskIds.has(task.id)
+  );
 
   // Normalize every id to a string. SimulationOptions (and the simulator UI
   // that builds it) always use string ids, but ids fetched directly from
@@ -317,7 +335,10 @@ export async function generatePlanSimulation(
     ...emp,
     id: String(emp.id),
   }));
-  const tasks = tasksRaw.map((task: any) => ({ ...task, id: String(task.id) }));
+  const tasks = uncompletedTasksRaw.map((task: any) => ({
+    ...task,
+    id: String(task.id),
+  }));
   const leaves = (leavesRaw || []).map((l: any) => ({
     ...l,
     employee_id: String(l.employee_id),
