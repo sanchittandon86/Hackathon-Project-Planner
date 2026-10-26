@@ -285,7 +285,7 @@ export default function SimulatorClient({
     setShowApplyConfirm(false);
     setApplying(true);
     try {
-      const result = await applySimulation(simulatedPlans);
+      const result = await applySimulation(simulatedPlans, blockedEmployees);
 
       if (!result.success) {
         toast.error(
@@ -295,6 +295,11 @@ export default function SimulatorClient({
         toast.success(
           "Changes applied successfully! Plan has been updated."
         );
+        if (result.data && result.data.leavesAdded > 0) {
+          toast.success(
+            `${result.data.leavesAdded} leave day${result.data.leavesAdded !== 1 ? "s" : ""} added from the blocked ranges.`
+          );
+        }
         // Clear simulation
         setSimulatedPlans([]);
         setDelayedTasks([]);

@@ -174,6 +174,7 @@ export function SimulatorHowItWorksModal() {
                   <li>Saves exactly the dates and assignments you previewed - nothing is recalculated again at apply time</li>
                   <li>Creates version history records for every task whose dates or assignee changed</li>
                   <li>Leaves already-completed tasks untouched, even if they were in the simulation</li>
+                  <li>Converts any blocked employee date ranges into real leave records, so future plan generations keep honoring that unavailability</li>
                 </ul>
               </div>
               <div>
