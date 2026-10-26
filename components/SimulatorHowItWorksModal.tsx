@@ -38,8 +38,11 @@ export function SimulatorHowItWorksModal() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                The What-If Scenario Simulator allows you to test different planning scenarios before making changes to your actual plan. 
+                The What-If Scenario Simulator allows you to test different planning scenarios before making changes to your actual plan.
                 You can simulate task delays and employee unavailability to see how they would affect the overall schedule.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Completed tasks have nothing left to simulate, so they&apos;re left out entirely - they won&apos;t appear in the task dropdown and can&apos;t be picked as a delay candidate.
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <Badge variant="outline" className="text-blue-600 border-blue-600">
@@ -110,8 +113,7 @@ export function SimulatorHowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">What Happens</p>
                 <p className="text-sm text-muted-foreground">
-                  The simulator reassigns tasks that were scheduled for the blocked employee during that period to other available employees, 
-                  or reschedules them to after the block period ends.
+                  The simulator reassigns affected tasks to whichever matching employee can start soonest given the block - falling back to the least-loaded employee when more than one can start on the same day. If nobody else is free, the task waits until the block period ends.
                 </p>
               </div>
             </CardContent>
@@ -160,18 +162,18 @@ export function SimulatorHowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">When To Apply</p>
                 <p className="text-sm text-muted-foreground">
-                  After reviewing the simulation results, if you&apos;re satisfied with the changes, click &quot;Apply Changes&quot; to make them permanent.
+                  After reviewing the simulation results, if you&apos;re satisfied with the changes, click &quot;Apply Changes&quot;. A confirmation dialog asks you to confirm before anything is written - so a stray click can&apos;t overwrite the real plan.
                 </p>
               </div>
               <div>
                 <p className="font-semibold text-sm mb-1">What Happens</p>
                 <p className="text-sm text-muted-foreground">
-                  The simulated plan replaces your current plan in the database. This action:
+                  Once confirmed, the simulated plan replaces your current plan in the database. This action:
                 </p>
                 <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mt-2">
-                  <li>Updates the real plan with simulated changes</li>
-                  <li>Creates version history records for the changes</li>
-                  <li>Triggers recalculation of all dependent tasks</li>
+                  <li>Saves exactly the dates and assignments you previewed - nothing is recalculated again at apply time</li>
+                  <li>Creates version history records for every task whose dates or assignee changed</li>
+                  <li>Leaves already-completed tasks untouched, even if they were in the simulation</li>
                 </ul>
               </div>
               <div>
