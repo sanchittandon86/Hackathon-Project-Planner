@@ -7,6 +7,7 @@
  * It receives pre-aggregated data from the server component.
  */
 
+import { useTheme } from "next-themes";
 import {
   BarChart,
   Bar,
@@ -25,38 +26,56 @@ type WorkloadChartProps = {
 };
 
 export default function WorkloadChart({ data }: WorkloadChartProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const axisColor = isDark ? "#a8a29e" : "#64748b";
+  const gridColor = isDark ? "#3f3f46" : "#e2e8f0";
+  const barColor = isDark ? "#f59e0b" : "#1e40af";
+
   return (
-    <Card className="border-slate-200">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-slate-800">Workload Distribution</CardTitle>
-        <CardDescription className="text-slate-500">
+        <CardTitle>Workload Distribution</CardTitle>
+        <CardDescription>
           Total hours allocated per employee
         </CardDescription>
       </CardHeader>
       <CardContent>
         {data.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            {/* Keying on the theme forces a full remount on toggle, so the
+                bars replay their grow-in animation with the new palette
+                instead of silently swapping fill colors in place. */}
+            <BarChart key={resolvedTheme} data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
               <XAxis
                 dataKey="name"
                 angle={-45}
                 textAnchor="end"
                 height={80}
                 interval={0}
-                stroke="#64748b"
+                stroke={axisColor}
               />
-              <YAxis stroke="#64748b" />
+              <YAxis stroke={axisColor} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
+                  backgroundColor: 'var(--popover)',
+                  border: '1px solid var(--border)',
                   borderRadius: '6px',
-                  color: '#1e293b'
+                  color: 'var(--popover-foreground)',
                 }}
+                itemStyle={{ color: 'var(--popover-foreground)' }}
+                labelStyle={{ color: 'var(--popover-foreground)' }}
+                cursor={{ fill: 'var(--accent)', opacity: 0.4 }}
               />
-              <Legend wrapperStyle={{ color: '#475569' }} />
-              <Bar dataKey="hours" fill="#1e40af" name="Total Hours" />
+              <Legend wrapperStyle={{ color: axisColor }} />
+              <Bar
+                dataKey="hours"
+                fill={barColor}
+                name="Total Hours"
+                animationDuration={700}
+                animationEasing="ease-out"
+              />
             </BarChart>
           </ResponsiveContainer>
         ) : (

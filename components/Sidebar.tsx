@@ -17,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Sheet,
   SheetContent,
@@ -116,17 +117,23 @@ export function Sidebar() {
       <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-background hidden md:block">
         <div className="flex h-full flex-col">
           {/* Logo/Header */}
-          <div className="flex h-16 items-center border-b px-6">
+          <div className="flex h-16 items-center justify-between border-b px-6">
             <Link href="/" className="flex items-center gap-2">
               <Layers className="h-6 w-6 text-primary" />
               <span className="text-lg font-semibold">Project Planner</span>
             </Link>
+            <ThemeToggle />
           </div>
 
           <NavigationContent />
           <LogoutButton />
         </div>
       </aside>
+
+      {/* Mobile Theme Toggle */}
+      <div className="fixed top-4 right-4 z-50 md:hidden">
+        <ThemeToggle />
+      </div>
 
       {/* Mobile Menu Button */}
       <div className="fixed top-4 left-4 z-50 md:hidden">
@@ -139,7 +146,7 @@ export function Sidebar() {
           <SheetContent side="left" className="w-64 p-0" title="Navigation Menu">
             <div className="flex h-full flex-col">
               {/* Logo/Header */}
-              <div className="flex h-16 items-center border-b px-6">
+              <div className="flex h-16 items-center justify-between border-b px-6">
                 <Link
                   href="/"
                   className="flex items-center gap-2"
@@ -148,6 +155,7 @@ export function Sidebar() {
                   <Layers className="h-6 w-6 text-primary" />
                   <span className="text-lg font-semibold">Project Planner</span>
                 </Link>
+                <ThemeToggle />
               </div>
 
               <NavigationContent onLinkClick={() => setMobileMenuOpen(false)} />

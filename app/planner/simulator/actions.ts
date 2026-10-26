@@ -8,8 +8,9 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { addDays } from "date-fns";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getErrorMessage } from "@/lib/utils";
+import { getErrorMessage, formatDateLocal } from "@/lib/utils";
 import { generatePlanSimulation, type SimulationOptions, type PlanResult } from "@/lib/planningEngine";
 
 export type ActionResult<T = void> = {
@@ -71,8 +72,9 @@ export async function applySimulation(
     total_hours: number;
     is_overdue: boolean;
     days_overdue: number;
-  }>
-): Promise<ActionResult> {
+  }>,
+  blockedEmployees?: Array<{ employee_id: string; from: string; to: string }>
+): Promise<ActionResult<{ leavesAdded: number }>> {
   console.log("[PLANNER:BE] applySimulation - Applying simulation", {
     simulatedPlanCount: simulatedPlans?.length || 0,
   });
@@ -405,19 +407,98 @@ export async function applySimulation(
       });
     }
 
-    // Revalidate both planner pages
+    // 5. Persist any simulator "blocked" ranges as real leave records. The
+    // block only ever existed in-memory for the simulation run that
+    // produced this plan - without writing it out here, the very
+    // unavailability that shaped the plan you just applied would be
+    // invisible to the next regeneration.
+    let leavesAdded = 0;
+    if (blockedEmployees && blockedEmployees.length > 0) {
+      const { data: existingLeaves, error: existingLeavesError } = await supabase
+        .from("leaves")
+        .select("employee_id, leave_date");
+
+      if (existingLeavesError) {
+        console.error("[PLANNER:BE] applySimulation - Error fetching existing leaves", {
+          error: existingLeavesError.message,
+          generationId,
+        });
+      }
+
+      const existingLeaveKeys = new Set(
+        (existingLeaves || []).map(
+          (l: { employee_id: number; leave_date: string }) =>
+            `${l.employee_id}-${l.leave_date}`
+        )
+      );
+
+      const nowIso = new Date().toISOString();
+      const leaveRowsToInsert: Array<{
+        employee_id: number;
+        leave_date: string;
+        last_updated: string;
+      }> = [];
+
+      for (const block of blockedEmployees) {
+        const employeeId = parseInt(block.employee_id, 10);
+        if (isNaN(employeeId) || !block.from || !block.to) continue;
+
+        let current = new Date(block.from);
+        const to = new Date(block.to);
+        while (current <= to) {
+          const dateStr = formatDateLocal(current);
+          const key = `${employeeId}-${dateStr}`;
+          if (!existingLeaveKeys.has(key)) {
+            existingLeaveKeys.add(key);
+            leaveRowsToInsert.push({
+              employee_id: employeeId,
+              leave_date: dateStr,
+              last_updated: nowIso,
+            });
+          }
+          current = addDays(current, 1);
+        }
+      }
+
+      if (leaveRowsToInsert.length > 0) {
+        const { error: leaveInsertError } = await supabase
+          .from("leaves")
+          .insert(leaveRowsToInsert);
+
+        if (leaveInsertError) {
+          console.error("[PLANNER:BE] applySimulation - Error inserting leave records", {
+            error: leaveInsertError.message,
+            generationId,
+          });
+          // Not fatal - the plan itself is already applied successfully.
+        } else {
+          leavesAdded = leaveRowsToInsert.length;
+          console.log("[PLANNER:BE] applySimulation - Leave records created from blocked ranges", {
+            leavesAdded,
+            generationId,
+          });
+        }
+      }
+    }
+
+    // Revalidate affected pages
     console.log("[PLANNER:BE] applySimulation - Revalidating paths", {
       generationId,
     });
     revalidatePath("/planner");
     revalidatePath("/planner/simulator");
+    if (leavesAdded > 0) {
+      revalidatePath("/leaves");
+    }
 
     console.log("[PLANNER:BE] applySimulation - Success", {
       planCount: plansToApply.length,
+      leavesAdded,
       generationId,
     });
     return {
       success: true,
+      data: { leavesAdded },
     };
   } catch (error: unknown) {
     console.error("[PLANNER:BE] applySimulation - Unexpected error", {
