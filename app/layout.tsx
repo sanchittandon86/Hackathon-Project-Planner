@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,11 +21,13 @@ export const metadata: Metadata = {
   description: "Manage resources, tasks, availability, planning, and track changes.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getCurrentUser();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -36,7 +39,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppShell>{children}</AppShell>
+          <AppShell user={user}>{children}</AppShell>
           <Toaster />
         </ThemeProvider>
       </body>

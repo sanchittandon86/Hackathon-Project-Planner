@@ -18,11 +18,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/UserMenu";
 import {
   Sheet,
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import type { CurrentUser } from "@/lib/auth/current-user";
 
 const navigationItems = [
   {
@@ -108,7 +110,7 @@ function LogoutButton() {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: CurrentUser | null }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -126,6 +128,11 @@ export function Sidebar() {
           </div>
 
           <NavigationContent />
+          {user && (
+            <div className="border-t px-3 py-3">
+              <UserMenu user={user} />
+            </div>
+          )}
           <LogoutButton />
         </div>
       </aside>
@@ -159,6 +166,11 @@ export function Sidebar() {
               </div>
 
               <NavigationContent onLinkClick={() => setMobileMenuOpen(false)} />
+              {user && (
+                <div className="border-t px-3 py-3">
+                  <UserMenu user={user} />
+                </div>
+              )}
               <LogoutButton />
             </div>
           </SheetContent>
