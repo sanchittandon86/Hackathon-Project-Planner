@@ -165,61 +165,114 @@ export async function generatePlan(
 
   // 2. Keep already-assigned tasks exactly as they are (same employee, same
   // dates) so that adding/regenerating doesn't reshuffle unrelated tasks.
-  // A task is only re-scheduled if it has no existing assignment, or if
+  // A task is only re-scheduled if it has no existing assignment, if
   // something about it actually changed (effort hours, the assigned
-  // employee's designation no longer matches what the task now requires,
-  // or a leave added/removed since means the stored end date is now wrong).
+  // employee's designation no longer matches what the task now requires, or
+  // a leave added since means the stored end date is now wrong), OR if an
+  // earlier slot has opened up for the assigned employee (e.g. a leave that
+  // used to block an earlier start was deleted). That last case needs
+  // walking each employee's kept tasks in their own chronological order -
+  // checking a task in isolation can only ever confirm "is my stored start
+  // date still achievable", never "is it still the earliest one", since
+  // that depends on what else this employee has queued before it.
   const tasksNeedingSchedule: typeof tasksToPlan = [];
+
+  // Tasks whose core attributes (designation, effort) still match their
+  // existing assignment are candidates to keep - but not confirmed until
+  // the per-employee walk below checks their position in the queue. Tasks
+  // that fail the basic attribute check, or have no existing assignment at
+  // all, need scheduling regardless of queue position.
+  const candidateKeepByEmployee = new Map<
+    string,
+    Array<{ task: (typeof tasksToPlan)[number]; existing: any }>
+  >();
 
   for (const task of tasksToPlan) {
     const existing = existingPlanByTaskId.get(String(task.id));
     const assignedEmployee = existing ? employeeById.get(existing.employee_id) : undefined;
 
-    const unchanged =
+    const attributesMatch =
       existing &&
       assignedEmployee &&
       assignedEmployee.designation === task.designation_required &&
-      Number(existing.total_hours) === Number(task.effort_hours) &&
-      recomputeEndDate(existing.employee_id, existing.start_date, Number(task.effort_hours)) ===
-        existing.end_date;
+      Number(existing.total_hours) === Number(task.effort_hours);
 
-    if (!unchanged) {
+    if (!attributesMatch) {
       tasksNeedingSchedule.push(task);
       continue;
     }
 
-    // Recompute overdue status against the task's current due_date (it may
-    // have changed since the assignment was made), but keep the employee
-    // and dates untouched.
-    let is_overdue = false;
-    let days_overdue = 0;
-    if (task.due_date) {
-      const dueDate = new Date(task.due_date);
-      const calculatedEndDate = new Date(existing.end_date);
-      if (calculatedEndDate > dueDate) {
-        is_overdue = true;
-        const diffTime = calculatedEndDate.getTime() - dueDate.getTime();
-        days_overdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      }
-    }
+    const list = candidateKeepByEmployee.get(existing.employee_id) || [];
+    list.push({ task, existing });
+    candidateKeepByEmployee.set(existing.employee_id, list);
+  }
 
-    plans.push({
-      task_id: task.id,
-      employee_id: existing.employee_id,
-      start_date: existing.start_date,
-      end_date: existing.end_date,
-      total_hours: task.effort_hours,
-      is_overdue,
-      days_overdue,
+  for (const [empId, candidates] of candidateKeepByEmployee) {
+    // Walk this employee's kept tasks in the order they were originally
+    // scheduled, tracking when they'd actually become free at each step -
+    // the same way the initial scheduling pass does.
+    candidates.sort((a, b) => {
+      const byDate = a.existing.start_date.localeCompare(b.existing.start_date);
+      return byDate !== 0 ? byDate : String(a.task.id).localeCompare(String(b.task.id));
     });
 
-    // Seed this employee's workload/availability so new tasks are scheduled
-    // around the work they're already committed to, instead of from zero.
-    workload[existing.employee_id] = (workload[existing.employee_id] || 0) + task.effort_hours;
-    const nextAvailableAfterKept = addDays(new Date(existing.end_date), 1);
-    const currentNext = employeeWorkload.get(existing.employee_id);
-    if (!currentNext || nextAvailableAfterKept > currentNext) {
-      employeeWorkload.set(existing.employee_id, nextAvailableAfterKept);
+    let pointer = new Date();
+
+    for (const { task, existing } of candidates) {
+      const earliestPossibleStart = getNextWorkday(empId, pointer);
+      const storedStart = new Date(existing.start_date);
+
+      // An earlier slot opened up (most commonly: a leave that used to
+      // block it was deleted) - the stored start is no longer the best
+      // available one, so this task needs a fresh scheduling pass.
+      if (earliestPossibleStart.getTime() < storedStart.getTime()) {
+        tasksNeedingSchedule.push(task);
+        continue;
+      }
+
+      // Stored start is still the earliest achievable - but check whether
+      // a leave was added inside the already-scheduled window, which would
+      // make the stored end date wrong even though the start is fine.
+      const recomputedEnd = recomputeEndDate(
+        empId,
+        existing.start_date,
+        Number(task.effort_hours)
+      );
+      if (recomputedEnd !== existing.end_date) {
+        tasksNeedingSchedule.push(task);
+        continue;
+      }
+
+      // Confirmed unchanged - recompute overdue status against the task's
+      // current due_date (it may have changed since the assignment was
+      // made), but keep the employee and dates untouched.
+      let is_overdue = false;
+      let days_overdue = 0;
+      if (task.due_date) {
+        const dueDate = new Date(task.due_date);
+        const calculatedEndDate = new Date(existing.end_date);
+        if (calculatedEndDate > dueDate) {
+          is_overdue = true;
+          const diffTime = calculatedEndDate.getTime() - dueDate.getTime();
+          days_overdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+      }
+
+      plans.push({
+        task_id: task.id,
+        employee_id: existing.employee_id,
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+        total_hours: task.effort_hours,
+        is_overdue,
+        days_overdue,
+      });
+
+      // Seed this employee's workload/availability so new tasks are
+      // scheduled around the work they're already committed to.
+      workload[empId] = (workload[empId] || 0) + task.effort_hours;
+      pointer = addDays(new Date(existing.end_date), 1);
+      employeeWorkload.set(empId, pointer);
     }
   }
 
