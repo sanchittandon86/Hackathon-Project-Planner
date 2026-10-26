@@ -46,7 +46,7 @@ export function HowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">Step 2: Match & Assign</p>
                 <p className="text-sm text-muted-foreground">
-                  For each task, finds employees with matching skills, selects the least-loaded employee for fairness, and skips weekends and leave days.
+                  For each task, finds employees with matching skills and compares who can actually start soonest - accounting for leave days and simulator blocks - breaking ties by lowest workload for fairness. Weekends and leave days are always skipped.
                 </p>
               </div>
               <div>
@@ -58,7 +58,40 @@ export function HowItWorksModal() {
               <div>
                 <p className="font-semibold text-sm mb-1">Step 4: Save Plan</p>
                 <p className="text-sm text-muted-foreground">
-                  Replaces the old schedule with the new one and saves to the database.
+                  Replaces the old schedule with the new one and saves to the database. Completed tasks are always preserved as-is - never overwritten or rescheduled.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-sm mb-1">Smart Regeneration</p>
+                <p className="text-sm text-muted-foreground">
+                  Re-running generation doesn&apos;t blindly redo every task. An already-scheduled task is only touched again if something that actually affects it changed - its effort/designation, or a leave newly added or removed within its dates (re-checked by replaying the day-by-day schedule, not just whether a leave happens to fall in range). Everything else stays exactly where it was.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Task Completion Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">✅ Completing Tasks</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="font-semibold text-sm mb-1">Marking Complete</p>
+                <p className="text-sm text-muted-foreground">
+                  &quot;Mark Completed&quot; is only enabled once a task&apos;s start date has arrived. Once marked, the task is locked - it&apos;s excluded from the What-If Simulator and can no longer be edited, deleted, or rescheduled.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-sm mb-1">Automatic QA Handoff</p>
+                <p className="text-sm text-muted-foreground">
+                  Completing a task that required a Developer automatically creates a follow-up task for QA review, cloning the same client, title, effort, and due date with designation set to QA - no manual re-entry needed.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-sm mb-1">No QA In Org Yet</p>
+                <p className="text-sm text-muted-foreground">
+                  If there&apos;s no active QA employee yet, the follow-up task is still created so the handoff isn&apos;t lost - it just waits unscheduled until a QA employee is added, and you&apos;ll see a distinct &quot;No QA in org&quot; warning instead of the normal success message.
                 </p>
               </div>
             </CardContent>
